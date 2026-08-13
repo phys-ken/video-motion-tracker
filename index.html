@@ -4,11 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>iPad Video Tracker</title>
-    <!-- アイコンは同梱(学校MDMフィルタ対策)。本文フォントはCDN＋システムフォールバック -->
+    <!-- アイコンは同梱(学校MDMフィルタ対策)。本文は端末ネイティブ書体(CDN依存なし) -->
     <link rel="stylesheet" href="vendor/material-icons-round.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -17,7 +14,7 @@
         <header class="app-header">
             <div class="logo-area">
                 <span class="material-icons-round brand-icon">analytics</span>
-                <h1>動画解析トラッカー <span class="badge">iPad版</span></h1>
+                <h1>動画解析トラッカー <span class="badge" id="app-badge"></span></h1>
             </div>
             <div class="header-actions">
                 <label for="video-upload" class="btn btn-secondary">
@@ -56,11 +53,39 @@
                         <span class="material-icons-round">cloud_upload</span>
                         <p>「動画を選択」または「サンプルで試す」で開始してください</p>
                     </div>
+                    <!-- コマ送り量・端到達を短時間表示するバッジ -->
+                    <div class="step-badge" id="step-badge" aria-hidden="true"></div>
                     <!-- Zoom/Pan controls on canvas -->
                     <div class="canvas-floating-controls">
                         <button class="btn-icon" id="btn-zoom-reset" title="ズームリセット">
                             <span class="material-icons-round">aspect_ratio</span>
                         </button>
+                    </div>
+                </div>
+
+                <!-- 読込直後の案内バナー: コマ数の提示＋前後カットの導線 -->
+                <div class="load-banner" id="load-banner" hidden>
+                    <div class="load-banner-row">
+                        <span class="material-icons-round load-banner-icon">check_circle</span>
+                        <span class="load-banner-info" id="load-banner-info"></span>
+                        <button class="btn-icon load-banner-close" id="banner-close" title="この案内を閉じる">
+                            <span class="material-icons-round">close</span>
+                        </button>
+                    </div>
+                    <div class="load-banner-row load-banner-guide">
+                        <span class="load-banner-msg">
+                            運動していない前後のコマをカットしておくと、あとの点打ちがラクです。
+                            スライダで運動の<b>開始</b>コマへ動かして「ここから」、<b>終了</b>コマで「ここまで」。
+                        </span>
+                    </div>
+                    <div class="load-banner-row load-banner-actions">
+                        <button class="btn btn-secondary btn-small" id="banner-set-in">
+                            <span class="material-icons-round">first_page</span>ここから
+                        </button>
+                        <button class="btn btn-secondary btn-small" id="banner-set-out">
+                            <span class="material-icons-round">last_page</span>ここまで
+                        </button>
+                        <span class="load-banner-range" id="load-banner-range"></span>
                     </div>
                 </div>
 
@@ -198,6 +223,11 @@
                         <h2>リアルタイムグラフ</h2>
                         <span class="graph-hint-label">表示する量を選択</span>
                     </div>
+                    <div class="graph-presets" id="graph-presets">
+                        <span class="graph-hint-label">おすすめ:</span>
+                        <button class="preset-btn" data-preset="fall">落下・投げ上げ</button>
+                        <button class="preset-btn" data-preset="projectile">投射（放物線）</button>
+                    </div>
                     <div class="graph-type-checklist" id="graph-type-checklist">
                         <span class="gtc-group">位置</span>
                         <label><input type="checkbox" value="y-t">y-t</label>
@@ -273,7 +303,7 @@
                 </button>
                 <button class="btn-confirm" id="btn-confirm">
                     <span class="material-icons-round">add_location_alt</span>
-                    <span class="confirm-label">確定（点を打つ）</span>
+                    <span class="confirm-label">確定<span class="confirm-sub">（点を打つ）</span></span>
                 </button>
                 <button class="btn-icon btn-jog" id="btn-next-1" title="1コマ進む">
                     <span class="material-icons-round">chevron_right</span>
@@ -322,6 +352,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-07-13a"></script>
+    <script src="app.js?v=2026-08-13a"></script>
 </body>
 </html>

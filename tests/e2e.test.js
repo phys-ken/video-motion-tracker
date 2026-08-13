@@ -208,7 +208,7 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             const mg=document.querySelectorAll('#graph-stack .mini-graph').length;
             const types=[...document.querySelectorAll('#graph-stack canvas')].map(c=>c.dataset.type);
             return {checked, mg, types};})()`);
-        ok(g0.mg === 2 && g0.types.join(',') === 'y-t,v-t', `既定で2枚のミニグラフ(y-t,v-t)を縦積み [${g0.types.join(',')}]`);
+        ok(g0.mg === 2 && g0.types.join(',') === 'y-t,vy-t', `既定で2枚のミニグラフ(y-t,vy-t)を縦積み [${g0.types.join(',')}]`);
 
         // チェック追加で3枚に増える
         const g1 = await evalAsync(cdp, S, `

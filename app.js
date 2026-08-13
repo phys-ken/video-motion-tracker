@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-07-13a';
+const APP_VERSION = '2026-08-13a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -55,19 +55,34 @@ const appState = {
 // グローバル（window）に公開してテストスイートからアクセス可能にする
 window.appState = appState;
 
-// カラーマップ (10色)
+// 物体カラーマップ (10色)。先頭4色は白背景で3:1以上のコントラストを持ち、
+// 色覚多様性でも分離する Okabe-Ito / Tol 系（グラフ線と映像上マーカーで共用）。
 const COLOR_MAP = [
-    '#ff4757', // 赤
-    '#2ed573', // 緑
-    '#1e90ff', // 青
-    '#ffa502', // オレンジ
-    '#eccc68', // 黄色
-    '#ff6b81', // ピンク
-    '#70a1ff', // 水色
-    '#7bed9f', // 黄緑
-    '#a29bfe', // 紫
-    '#000000'  // 黒
+    '#0072B2', // 青 (物体1)
+    '#D55E00', // 朱 (物体2)
+    '#009E73', // 緑 (物体3)
+    '#AA4499', // 紫
+    '#B45309', // 琥珀
+    '#005082', // 濃青
+    '#A34700', // 濃朱
+    '#007455', // 濃緑
+    '#52606D', // グレー
+    '#1F2933'  // 黒
 ];
+
+// UIクロームの描画色（styles.css の CSS 変数と手動で同期。canvas 描画用）
+const UI_COLORS = {
+    accent: '#0B6BCB',        // 操作の青（選択・照準）
+    accentBright: '#53A8FF',  // 映像上の選択リング（暗い映像でも見える明るい青）
+    calBright: '#FFC400',     // 映像上の校正オーバーレイ（原点/スケール。暗い縁取りとセット）
+    text: '#1F2933',
+    textSub: '#52606D',
+    grid: '#E4E7EB',          // グラフのグリッド
+    axis: '#9AA5B1',          // グラフの主軸
+    surface: '#FFFFFF'
+};
+const FONT_SANS = '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif';
+const FONT_MONO = 'Menlo, Consolas, monospace';
 
 // オートトラッカー用内部Canvas
 let offscreenCanvas = null;
@@ -172,6 +187,7 @@ function resetForNewVideo() {
     appState.slowMotionCaptureFps = null;
     undoStack.length = 0;
     setSelectedPoint(null);
+    hideLoadBanner();
     updateDataTable();
     updateGraph();
     refreshCalibrationLabels();
@@ -251,6 +267,8 @@ document.addEventListener('DOMContentLoaded', () => {
     logDebug(`バージョン: ${APP_VERSION}`);
     const verLabel = document.getElementById('app-version-label');
     if (verLabel) verLabel.textContent = `v${APP_VERSION}`;
+    const badge = document.getElementById('app-badge');
+    if (badge) badge.textContent = `v${APP_VERSION}`;
 
     appState.videoElement = document.getElementById('hidden-video');
     appState.canvas = document.getElementById('tracker-canvas');
@@ -261,6 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSampleLoad();
     setupPlaybackControls();
     setupRangeControls();
+    setupLoadBanner();
     setupDebugConsole();
     setupCanvasTouch();
     setupModeButtons();
@@ -299,6 +318,7 @@ const SAMPLE_LIST = [
     { file: 'samples/free_fall.mp4',           name: '自由落下',       hint: 'v0=0・約1.6m落下' },
     { file: 'samples/vertical_throw.mp4',      name: '鉛直投げ上げ',   hint: '上がって戻ってくる' },
     { file: 'samples/projectile.mp4',          name: '水平投射',       hint: '水平に投げ出した球' },
+    { file: 'samples/oblique_throw.mp4',       name: '斜方投射',       hint: '斜め45°に打ち上げ' },
     { file: 'samples/collision_elastic.mp4',   name: '衝突（弾性）',   hint: '動く球が静止球に・物体2つ' },
     { file: 'samples/collision_inelastic.mp4', name: '衝突（合体）',   hint: 'くっついて動く・物体2つ' }
 ];
@@ -314,10 +334,10 @@ function showSampleDialog() {
         `<button class="btn btn-secondary sample-item" data-idx="${i}"
                  style="width:100%; justify-content:flex-start; margin-bottom:6px;">
              <span class="material-icons-round">smart_display</span>
-             ${s.name}<span style="margin-left:auto; font-size:0.72rem; color:#8A95A3;">${s.hint}</span>
+             ${s.name}<span style="margin-left:auto; font-size:0.72rem; color:#52606D;">${s.hint}</span>
          </button>`).join('');
     const body = `
-        <p style="margin-bottom:8px; font-size:0.8rem; color:#8A95A3;">
+        <p style="margin-bottom:8px; font-size:0.8rem; color:#52606D;">
             どの動画にも画面下に「1 m」のスケールバーがあります。まずそのバーで
             スケール設定してから測ってください。
         </p>
@@ -474,8 +494,7 @@ function setupFileUpload() {
         updateOffscreenCanvas();
         drawVideoFrame();
         updateTimeDisplay();
-        const lblFrame = document.getElementById('lbl-frame');
-        if (lblFrame) lblFrame.textContent = appState.currentFrame;
+        updateFrameLabel(appState.currentFrame);
     });
     
     appState.videoElement.addEventListener('error', () => {
@@ -689,6 +708,7 @@ async function startFrameScan() {
     persistState();
     updateGraph();
     updateStepGuide();
+    showLoadBanner(result && result.skipped ? `重複 ${result.skipped} コマを自動除外` : '');
 }
 
 // 全フレームをシークで列挙し、{実時刻, 複製フラグ} を作る。
@@ -921,7 +941,7 @@ function openSlowMotionDialog(hinted) {
            ここで実際の撮影fpsを指定すると、速度・加速度の計算に正しく反映されます。`;
     const body = `
         <p style="margin-bottom:6px;">${intro}</p>
-        <p style="font-size:0.8rem; color:#8A95A3; margin-bottom:8px;">
+        <p style="font-size:0.8rem; color:#52606D; margin-bottom:8px;">
             カメラの「設定 &gt; カメラ &gt; スローモーション撮影」で選んだfpsを入力してください。
             分からない/スローで撮っていない場合は「通常速度」のままでOKです。
         </p>
@@ -1026,10 +1046,10 @@ function setupPlaybackControls() {
         });
     }
     
-    if (btnPrev1) btnPrev1.addEventListener('click', () => stepFrame(-1));
-    if (btnNext1) btnNext1.addEventListener('click', () => stepFrame(1));
-    if (btnPrev10) btnPrev10.addEventListener('click', () => stepFrame(-10));
-    if (btnNext10) btnNext10.addEventListener('click', () => stepFrame(10));
+    attachJogButton(btnPrev1, -1);
+    attachJogButton(btnNext1, 1);
+    attachJogButton(btnPrev10, -10);
+    attachJogButton(btnNext10, 10);
     
     if (slider) {
         slider.addEventListener('input', (e) => {
@@ -1040,12 +1060,129 @@ function setupPlaybackControls() {
     }
 }
 
+// --- コマ送り（パラパラ送り付き） ------------------------------------
+// ±1コマは即シーク＋バッジ表示。±複数コマは中間のコマを1枚ずつ表示して
+// パラパラ漫画のように移動する（「押したのに変わらない」を無くす）。
+// シークが遅い端末では時間予算を超えた時点で残りを直行し、体感を保つ。
+const FLIP_BUDGET_MS = 700;
+let flipTarget = null;       // パラパラ送り実行中の目的コマ（追加入力で更新）
+
+// シークキューが空になった瞬間を待つ（パラパラ送りの歩調合わせ）
+let seekIdleWaiters = [];
+function whenSeekIdle() {
+    if (!seekBusy && seekPendingFrame === null) return Promise.resolve();
+    return new Promise(resolve => seekIdleWaiters.push(resolve));
+}
+function notifySeekIdleIfDone() {
+    if (seekBusy || seekPendingFrame !== null || !seekIdleWaiters.length) return;
+    const waiters = seekIdleWaiters;
+    seekIdleWaiters = [];
+    waiters.forEach(fn => fn());
+}
+
+function clampToRange(frame) {
+    return Math.max(appState.rangeIn, Math.min(appState.rangeOut, frame));
+}
+
+// ジョグボタン: タップ＝1回、長押し＝連続コマ送り（450ms後から150ms間隔）
+function attachJogButton(btn, delta) {
+    if (!btn) return;
+    let holdTimer = null, repeatTimer = null, held = false;
+    const stop = () => {
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
+    };
+    btn.addEventListener('pointerdown', () => {
+        held = false;
+        stop();
+        holdTimer = setTimeout(() => {
+            held = true;
+            stepFrame(delta);
+            repeatTimer = setInterval(() => stepFrame(delta), 150);
+        }, 450);
+    });
+    btn.addEventListener('pointerup', stop);
+    btn.addEventListener('pointercancel', stop);
+    btn.addEventListener('pointerleave', stop);
+    // 長押しで連続送りした場合は、指を離した時の click で余計に1コマ進めない
+    btn.addEventListener('click', () => { if (!held) stepFrame(delta); held = false; });
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
 function stepFrame(delta) {
     if (!appState.videoElement.src) return;
     pauseVideo();
-    // コマ送りは解析範囲内に収める（範囲外は表・グラフからも除外されるため）
-    const targetFrame = Math.max(appState.rangeIn, Math.min(appState.rangeOut, appState.currentFrame + delta));
-    seekToFrame(targetFrame);
+    // 実行中のパラパラ送りがあれば、その目的地を基準に「押した分だけ」延長する
+    const base = (flipTarget !== null) ? flipTarget : appState.currentFrame;
+    const target = clampToRange(base + delta);
+    if (target === base) {
+        // 端に到達していてこれ以上動けない：理由をバッジで返す（無言にしない）
+        const atCustomEdge = delta > 0 ? appState.rangeOut < appState.totalFrames
+                                       : appState.rangeIn > 0;
+        showStepBadge(delta > 0
+            ? (atCustomEdge ? 'アウト点です' : '最後のコマです')
+            : (atCustomEdge ? 'イン点です' : '最初のコマです'));
+        return;
+    }
+    if (flipTarget !== null) {
+        flipTarget = target;
+        return;
+    }
+    if (Math.abs(target - appState.currentFrame) <= 1) {
+        seekToFrame(target);
+        showStepBadge(delta > 0 ? '+1' : '−1');
+        pulseFrameLabel();
+        return;
+    }
+    runFlipTo(target);
+}
+
+async function runFlipTo(target) {
+    flipTarget = target;
+    const startFrame = appState.currentFrame;
+    const deadline = performance.now() + FLIP_BUDGET_MS;
+    try {
+        while (flipTarget !== null && appState.currentFrame !== flipTarget) {
+            const dir = flipTarget > appState.currentFrame ? 1 : -1;
+            // 時間予算を使い切ったら残りは直行（遅い端末でも待たせない）
+            const next = (performance.now() > deadline) ? flipTarget
+                                                        : appState.currentFrame + dir;
+            seekToFrame(next);
+            await whenSeekIdle();
+            const moved = appState.currentFrame - startFrame;
+            showStepBadge(`${moved > 0 ? '+' : ''}${moved}`, true);
+            pulseFrameLabel();
+        }
+    } finally {
+        flipTarget = null;
+        showStepBadge(null); // stickyを解除（表示中の値からフェードアウト）
+    }
+}
+
+// キャンバス上の一時バッジ（コマ送り量・端到達の理由を短時間表示）
+let stepBadgeTimer = null;
+function showStepBadge(text, sticky) {
+    const badge = document.getElementById('step-badge');
+    if (!badge) return;
+    if (stepBadgeTimer) { clearTimeout(stepBadgeTimer); stepBadgeTimer = null; }
+    if (text !== null && text !== undefined) badge.textContent = text;
+    badge.classList.add('visible');
+    if (!sticky) stepBadgeTimer = setTimeout(() => badge.classList.remove('visible'), 700);
+}
+
+// コマ番号は常に「現在 / 総数」で表示（今どのあたりか一目で分かる）
+function updateFrameLabel(frame) {
+    const lbl = document.getElementById('lbl-frame');
+    if (lbl) lbl.textContent = `${frame} / ${appState.totalFrames}`;
+}
+
+// コマ番号表示をひと呼吸光らせる（アニメーション再トリガのためクラスを付け直す）
+function pulseFrameLabel() {
+    const lbl = document.getElementById('lbl-frame');
+    if (!lbl) return;
+    lbl.classList.remove('pulse');
+    void lbl.offsetWidth;
+    lbl.classList.add('pulse');
 }
 
 // --- 解析範囲（イン/アウト点） ---------------------------------------
@@ -1073,10 +1210,11 @@ function updateRangeUI() {
             const b = (appState.rangeOut / total) * 100;
             slider.style.background =
                 `linear-gradient(90deg, var(--line) 0%, var(--line) ${a}%, ` +
-                `var(--cyan) ${a}%, var(--cyan) ${b}%, var(--line) ${b}%, var(--line) 100%)`;
+                `var(--accent) ${a}%, var(--accent) ${b}%, var(--line) ${b}%, var(--line) 100%)`;
         }
     }
     if (lbl) lbl.textContent = full ? '全体' : `${appState.rangeIn}–${appState.rangeOut}`;
+    updateLoadBannerRange();
 }
 
 // 範囲確定時にその範囲だけ複製コマを除外（読込時に持ち越した分。1動画につき1回）
@@ -1115,26 +1253,76 @@ async function maybeDedupRange() {
     updateTimeDisplay();
 }
 
+function toggleRangeIn() {
+    if (!appState.videoElement.src) return;
+    pauseVideo();
+    // 既にイン点と同じコマでもう一度押すと解除（先頭へ戻す）
+    appState.rangeIn = (appState.rangeIn === appState.currentFrame) ? 0
+        : Math.min(appState.currentFrame, appState.rangeOut);
+    updateRangeUI(); updateDataTable(); updateGraph();
+    maybeDedupRange();
+}
+
+function toggleRangeOut() {
+    if (!appState.videoElement.src) return;
+    pauseVideo();
+    appState.rangeOut = (appState.rangeOut === appState.currentFrame) ? appState.totalFrames
+        : Math.max(appState.currentFrame, appState.rangeIn);
+    updateRangeUI(); updateDataTable(); updateGraph();
+    maybeDedupRange();
+}
+
 function setupRangeControls() {
     const btnIn = document.getElementById('btn-range-in');
     const btnOut = document.getElementById('btn-range-out');
-    if (btnIn) btnIn.addEventListener('click', () => {
-        if (!appState.videoElement.src) return;
-        pauseVideo();
-        // 既にイン点と同じコマでもう一度押すと解除（先頭へ戻す）
-        appState.rangeIn = (appState.rangeIn === appState.currentFrame) ? 0
-            : Math.min(appState.currentFrame, appState.rangeOut);
-        updateRangeUI(); updateDataTable(); updateGraph();
-        maybeDedupRange();
-    });
-    if (btnOut) btnOut.addEventListener('click', () => {
-        if (!appState.videoElement.src) return;
-        pauseVideo();
-        appState.rangeOut = (appState.rangeOut === appState.currentFrame) ? appState.totalFrames
-            : Math.max(appState.currentFrame, appState.rangeIn);
-        updateRangeUI(); updateDataTable(); updateGraph();
-        maybeDedupRange();
-    });
+    if (btnIn) btnIn.addEventListener('click', toggleRangeIn);
+    if (btnOut) btnOut.addEventListener('click', toggleRangeOut);
+}
+
+// --- 読込直後の案内バナー（コマ数の提示＋前後カットの導線） ------------
+// 読み込めたことを数字（コマ数/fps/長さ）で即座に返し、動きのない前後を
+// イン/アウト点でカットするよう促す。モーダルにせず、作業の邪魔をしない。
+function showLoadBanner(extraNote) {
+    const banner = document.getElementById('load-banner');
+    if (!banner) return;
+    const info = document.getElementById('load-banner-info');
+    if (info) {
+        const fps = appState.videoFps ? `${+appState.videoFps.toFixed(2)} fps` : '-- fps';
+        const dur = appState.videoDuration ? `${appState.videoDuration.toFixed(2)} 秒` : '';
+        info.textContent = `${appState.totalFrames + 1} コマ / ${fps} / ${dur}`
+            + (extraNote ? ` — ${extraNote}` : '');
+    }
+    updateLoadBannerRange();
+    banner.hidden = false;
+}
+
+function hideLoadBanner() {
+    const banner = document.getElementById('load-banner');
+    if (banner) banner.hidden = true;
+}
+
+// バナー内の範囲表示を同期し、イン・アウト両方を設定し終えたら役目を終える
+function updateLoadBannerRange() {
+    const banner = document.getElementById('load-banner');
+    if (!banner || banner.hidden) return;
+    const lbl = document.getElementById('load-banner-range');
+    const full = appState.rangeIn === 0 && appState.rangeOut === appState.totalFrames;
+    if (lbl) {
+        lbl.textContent = full ? '未設定（全コマを解析）'
+            : `コマ ${appState.rangeIn} 〜 ${appState.rangeOut}（${appState.rangeOut - appState.rangeIn + 1} コマ）`;
+    }
+    if (appState.rangeIn > 0 && appState.rangeOut < appState.totalFrames) {
+        setTimeout(hideLoadBanner, 1200); // 両端を切り終えたら少し見せて畳む
+    }
+}
+
+function setupLoadBanner() {
+    const btnIn = document.getElementById('banner-set-in');
+    const btnOut = document.getElementById('banner-set-out');
+    const btnClose = document.getElementById('banner-close');
+    if (btnIn) btnIn.addEventListener('click', () => { toggleRangeIn(); updateLoadBannerRange(); });
+    if (btnOut) btnOut.addEventListener('click', () => { toggleRangeOut(); updateLoadBannerRange(); });
+    if (btnClose) btnClose.addEventListener('click', hideLoadBanner);
 }
 
 // --- シーク直列化キュー ---------------------------------------------
@@ -1179,6 +1367,7 @@ function pumpSeekQueue() {
         }
         seekBusy = false;
         pumpSeekQueue(); // 連打中に溜まった最後の要求を実行
+        notifySeekIdleIfDone();
     };
 
     if (rvfcSupported && !appState.isScanning) {
@@ -1234,9 +1423,8 @@ function renderLoop() {
     const slider = document.getElementById('frame-slider');
     if (slider) slider.value = appState.currentFrame;
     
-    const lblFrame = document.getElementById('lbl-frame');
-    if (lblFrame) lblFrame.textContent = appState.currentFrame;
-    
+    updateFrameLabel(appState.currentFrame);
+
     updateOffscreenCanvas();
     drawVideoFrame();
     updateTimeDisplay();
@@ -1320,14 +1508,14 @@ function drawCrosshair() {
     const cx = appState.canvas.width / 2;
     const cy = appState.canvas.height / 2;
     const isCalib = appState.pendingCapture !== null;
-    // 照準 = シグナル・アンバー（ストロボ発光）。校正中は校正系のシアン。
-    const color = isCalib ? '#5AA9E6' : '#FFB627';
+    // 照準 = 操作の青。校正中は校正系のアンバー（映像上は明るい版＋縁取り）。
+    const color = isCalib ? UI_COLORS.calBright : UI_COLORS.accent;
 
     ctx.save();
     ctx.lineWidth = 1.5;
 
-    // 外側の縁取り（白）で視認性確保
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    // 外側の縁取りで視認性確保（青には白縁、明るいアンバーには黒縁）
+    ctx.strokeStyle = isCalib ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.9)';
     ctx.lineWidth = 3;
     drawReticlePath(ctx, cx, cy);
     ctx.stroke();
@@ -1687,8 +1875,7 @@ function confirmAtCrosshair() {
         appState.currentFrame = shown;
         const slider = document.getElementById('frame-slider');
         if (slider) slider.value = shown;
-        const lblFrame = document.getElementById('lbl-frame');
-        if (lblFrame) lblFrame.textContent = shown;
+        updateFrameLabel(shown);
     }
 
     if (appState.pendingCapture === 'origin') {
@@ -2018,7 +2205,7 @@ function drawTrackingPoints() {
             if (p.id === appState.selectedPointId) {
                 appState.ctx.beginPath();
                 appState.ctx.arc(local.x, local.y, r * 1.6, 0, Math.PI * 2);
-                appState.ctx.strokeStyle = '#FFB627'; // アンバーの選択強調外枠
+                appState.ctx.strokeStyle = UI_COLORS.accentBright; // 選択強調の外枠
                 appState.ctx.lineWidth = 2.0 / scale;
                 appState.ctx.stroke();
             }
@@ -2045,7 +2232,7 @@ function drawTrackingPoints() {
             // 他のフレームの軌跡表示
             appState.ctx.beginPath();
             appState.ctx.arc(local.x, local.y, r * 0.4, 0, Math.PI * 2);
-            appState.ctx.fillStyle = COLOR_MAP[(p.objectId - 1) % COLOR_MAP.length] + '55';
+            appState.ctx.fillStyle = COLOR_MAP[(p.objectId - 1) % COLOR_MAP.length] + '88';
             appState.ctx.fill();
         }
     });
@@ -2062,12 +2249,12 @@ function drawCalibrationMarkers() {
         appState.ctx.lineTo(localO.x + 40 / scale, localO.y);
         appState.ctx.moveTo(localO.x, localO.y - 40 / scale);
         appState.ctx.lineTo(localO.x, localO.y + 40 / scale);
-        appState.ctx.strokeStyle = '#FF5A52';
+        appState.ctx.strokeStyle = UI_COLORS.calBright;
         appState.ctx.lineWidth = 1.5 / scale;
         appState.ctx.stroke();
 
-        appState.ctx.fillStyle = '#FF5A52';
-        appState.ctx.font = `bold ${11 / scale}px IBM Plex Sans JP`;
+        appState.ctx.fillStyle = UI_COLORS.calBright;
+        appState.ctx.font = `bold ${11 / scale}px ${FONT_SANS}`;
         appState.ctx.fillText("x", localO.x + 45 / scale, localO.y + 4 / scale);
         appState.ctx.fillText("y", localO.x - 4 / scale, localO.y - 45 / scale);
     }
@@ -2080,7 +2267,7 @@ function drawCalibrationMarkers() {
         appState.ctx.beginPath();
         appState.ctx.moveTo(localS.x, localS.y);
         appState.ctx.lineTo(localE.x, localE.y);
-        appState.ctx.strokeStyle = '#5AA9E6';
+        appState.ctx.strokeStyle = UI_COLORS.calBright;
         appState.ctx.lineWidth = 2.0 / scale;
         appState.ctx.stroke();
         
@@ -2097,8 +2284,8 @@ function drawCalibrationMarkers() {
         drawEndBar(localS);
         drawEndBar(localE);
         
-        appState.ctx.fillStyle = '#5AA9E6';
-        appState.ctx.font = `${11 / scale}px IBM Plex Sans JP`;
+        appState.ctx.fillStyle = UI_COLORS.calBright;
+        appState.ctx.font = `${11 / scale}px ${FONT_SANS}`;
         const midX = (localS.x + localE.x) / 2;
         const midY = (localS.y + localE.y) / 2;
         appState.ctx.fillText(`${appState.calibration.scaleActual} cm`, midX + 10 / scale, midY - 10 / scale);
@@ -2106,7 +2293,7 @@ function drawCalibrationMarkers() {
         const localTemp = videoToLocalCanvas(appState.calibration.scaleTempStart.x, appState.calibration.scaleTempStart.y);
         appState.ctx.beginPath();
         appState.ctx.arc(localTemp.x, localTemp.y, 5 / scale, 0, Math.PI * 2);
-        appState.ctx.fillStyle = '#5AA9E6';
+        appState.ctx.fillStyle = UI_COLORS.calBright;
         appState.ctx.fill();
     }
 }
@@ -2160,7 +2347,7 @@ function updateDataTable() {
         
         // 選択された行のスタイルを変更
         if (p.id === appState.selectedPointId) {
-            tr.style.background = '#e8f0fe';
+            tr.style.background = '#E3EEF9';
             tr.style.fontWeight = 'bold';
         }
         
@@ -2282,7 +2469,9 @@ function computeKinematics(sortedData, smoothedOverride) {
 
 // --- リアルタイムグラフ（複数表示・縦積み） ---
 const GRAPH_TYPES_KEY = 'tracker_for_ipad_graph_types_v1';
-const DEFAULT_GRAPH_TYPES = ['y-t', 'v-t'];
+// 既定は y-t と vy-t。「v-tグラフの傾き＝重力加速度」に自然に到達させるため、
+// 符号が見える vy-t を速さ(v-t)より優先する。
+const DEFAULT_GRAPH_TYPES = ['y-t', 'vy-t'];
 let renderedGraphSignature = null; // 現在 DOM 上に組まれているグラフ種別の署名
 
 function getSelectedGraphTypes() {
@@ -2316,6 +2505,23 @@ function setupGraphEvents() {
     checklist.addEventListener('change', () => {
         persistGraphTypes(getSelectedGraphTypes());
         updateGraph();
+    });
+
+    // 運動の種類に合わせたグラフのプリセット（チェックを一括切替するだけの近道）
+    const PRESETS = {
+        fall:       ['y-t', 'vy-t'],               // 自由落下・鉛直投げ上げ
+        projectile: ['y-x', 'vx-t', 'vy-t']        // 水平投射・斜方投射
+    };
+    document.querySelectorAll('#graph-presets .preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const types = PRESETS[btn.dataset.preset];
+            if (!types) return;
+            checklist.querySelectorAll('input[type="checkbox"]').forEach(b => {
+                b.checked = types.includes(b.value);
+            });
+            persistGraphTypes(types);
+            updateGraph();
+        });
     });
 
     // 生データ/スムージング切替（既定はスムージングON＝チェックOFF）
@@ -2428,8 +2634,8 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     graphCanvas._plotPoints = plotPoints;
 
     if (!data || data.length === 0) {
-        gCtx.fillStyle = '#7A828E';
-        gCtx.font = '11px IBM Plex Sans JP';
+        gCtx.fillStyle = UI_COLORS.textSub;
+        gCtx.font = `11px ${FONT_SANS}`;
         gCtx.textAlign = 'center';
         gCtx.textBaseline = 'middle';
         gCtx.fillText("測定が開始されると自動で描画されます", graphCanvas.width / 2, graphCanvas.height / 2);
@@ -2444,25 +2650,33 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     let maxX = Math.max(...valX);
     let minY = Math.min(...valY);
     let maxY = Math.max(...valY);
-    
+
     // 最大最小が一致する場合のフラット防止
     if (maxX === minX) { maxX += 1; minX -= 1; }
     if (maxY === minY) { maxY += 1; minY -= 1; }
-    
+
     // マージン
     const padL = 35;
     const padR = 15;
     const padT = 15;
     const padB = 22;
-    
+
     const plotW = graphCanvas.width - padL - padR;
     const plotH = graphCanvas.height - padT - padB;
-    
+
+    // 軌跡グラフ(y-x)は縦横を同縮尺にして、放物線の形を歪めずに見せる
+    if (series.traj && plotW > 0 && plotH > 0) {
+        const scalePerPx = Math.max((maxX - minX) / plotW, (maxY - minY) / plotH);
+        const cxm = (minX + maxX) / 2, cym = (minY + maxY) / 2;
+        minX = cxm - scalePerPx * plotW / 2; maxX = cxm + scalePerPx * plotW / 2;
+        minY = cym - scalePerPx * plotH / 2; maxY = cym + scalePerPx * plotH / 2;
+    }
+
     const toCanvasX = (val) => padL + ((val - minX) / (maxX - minX)) * plotW;
     const toCanvasY = (val) => padT + plotH - ((val - minY) / (maxY - minY)) * plotH;
     
     // グリッド背景線
-    gCtx.strokeStyle = '#222933';
+    gCtx.strokeStyle = UI_COLORS.grid;
     gCtx.lineWidth = 1;
     
     // X軸の補助線と目盛りラベル
@@ -2477,8 +2691,8 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         gCtx.lineTo(cx, padT + plotH);
         gCtx.stroke();
         
-        gCtx.fillStyle = '#7A828E';
-        gCtx.font = '8px IBM Plex Mono';
+        gCtx.fillStyle = UI_COLORS.textSub;
+        gCtx.font = `8px ${FONT_MONO}`;
         gCtx.textAlign = 'center';
         gCtx.fillText(val.toFixed(2), cx, padT + plotH + 11);
     }
@@ -2495,14 +2709,14 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         gCtx.lineTo(padL + plotW, cy);
         gCtx.stroke();
         
-        gCtx.fillStyle = '#7A828E';
-        gCtx.font = '8px IBM Plex Mono';
+        gCtx.fillStyle = UI_COLORS.textSub;
+        gCtx.font = `8px ${FONT_MONO}`;
         gCtx.textAlign = 'right';
         gCtx.fillText(val.toFixed(1), padL - 5, cy + 3);
     }
     
     // 主軸線
-    gCtx.strokeStyle = '#3A434F';
+    gCtx.strokeStyle = UI_COLORS.axis;
     gCtx.lineWidth = 1.2;
     gCtx.beginPath();
     gCtx.moveTo(padL, padT);
@@ -2511,8 +2725,8 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     gCtx.stroke();
     
     // 軸名ラベルの描画
-    gCtx.fillStyle = '#9AA3AE';
-    gCtx.font = '8px IBM Plex Sans JP';
+    gCtx.fillStyle = UI_COLORS.textSub;
+    gCtx.font = `8px ${FONT_SANS}`;
     gCtx.textAlign = 'right';
     gCtx.fillText(labelX, graphCanvas.width - 4, graphCanvas.height - 4);
     gCtx.textAlign = 'left';
@@ -2544,12 +2758,50 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         // 選択されたポイントはプロット上でも大きく＆アンバーで強調（三者連動）
         const isSel = (data[idx].id === appState.selectedPointId);
         gCtx.arc(cx, cy, isSel ? 5.0 : 3.0, 0, Math.PI * 2);
-        gCtx.fillStyle = isSel ? '#FFB627' : COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
+        gCtx.fillStyle = isSel ? UI_COLORS.accent : COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
         gCtx.fill();
-        gCtx.strokeStyle = isSel ? '#FFB627' : '#0F1216';
+        gCtx.strokeStyle = isSel ? UI_COLORS.accent : UI_COLORS.surface;
         gCtx.lineWidth = isSel ? 2 : 1;
         gCtx.stroke();
     });
+
+    // 速度グラフには最小二乗の傾き（＝平均加速度）、加速度グラフには平均値を
+    // 右上に常時表示する。「v-tの傾きから重力加速度を読む」授業への橋渡し。
+    const fitLabel = graphFitLabel(graphType, valX, valY, unit);
+    if (fitLabel) {
+        gCtx.fillStyle = UI_COLORS.text;
+        gCtx.font = `bold 10px ${FONT_MONO}`;
+        gCtx.textAlign = 'right';
+        gCtx.fillText(fitLabel, graphCanvas.width - padR, padT + 10);
+    }
+}
+
+// 3桁の有効数字で表示（1234.5→1230, 9.784→9.78）
+function fmtSig3(v) {
+    if (!isFinite(v)) return '--';
+    return Number(v.toPrecision(3)).toString();
+}
+
+// グラフ右上の読み出しラベル。速度: 回帰直線の傾き / 加速度: 平均値
+function graphFitLabel(graphType, xs, ys, unit) {
+    const n = xs.length;
+    if (n < 3) return null;
+    if (graphType === 'vx-t' || graphType === 'vy-t' || graphType === 'v-t') {
+        const mx = xs.reduce((a, b) => a + b, 0) / n;
+        const my = ys.reduce((a, b) => a + b, 0) / n;
+        let sxx = 0, sxy = 0;
+        for (let i = 0; i < n; i++) {
+            sxx += (xs[i] - mx) * (xs[i] - mx);
+            sxy += (xs[i] - mx) * (ys[i] - my);
+        }
+        if (sxx <= 0) return null;
+        return `傾き ${fmtSig3(sxy / sxx)} ${unit}/s²`;
+    }
+    if (graphType === 'ax-t' || graphType === 'ay-t' || graphType === 'a-t') {
+        const mean = ys.reduce((a, b) => a + b, 0) / n;
+        return `平均 ${fmtSig3(mean)} ${unit}/s²`;
+    }
+    return null;
 }
 
 // --- エクスポート ---
@@ -2609,7 +2861,7 @@ function setupExport() {
 
         const dialogText = `
             <p style="margin-bottom:6px;">位置に加え、速度・加速度（数値微分）も含みます。</p>
-            <textarea style="width:100%; height:120px; font-family:'IBM Plex Mono',monospace; background:#0F1216; color:#E6EAEF; border:1px solid #2B333D; border-radius:5px; padding:8px; font-size:0.78rem;" readonly>${tsv}</textarea>
+            <textarea style="width:100%; height:120px; font-family:Menlo,Consolas,monospace; background:#F1F3F6; color:#1F2933; border:1px solid #CBD2D9; border-radius:5px; padding:8px; font-size:0.78rem;" readonly>${tsv}</textarea>
             <div style="margin-top:10px; display:flex; gap:8px;">
                 <button class="btn btn-secondary" id="btn-copy-tsv" style="flex:1;">TSVをコピー</button>
                 <button class="btn btn-secondary" id="btn-download-tsv" style="flex:1;">TSV保存</button>
@@ -2729,7 +2981,7 @@ function setupStrobe() {
         }
         const body = `
             <p style="margin-bottom:6px;">追跡点のコマを重ねてストロボ写真を作ります。</p>
-            <canvas id="strobe-preview" style="width:100%; border:1px solid #2B333D; border-radius:5px; background:#0F1216;"></canvas>
+            <canvas id="strobe-preview" style="width:100%; border:1px solid #CBD2D9; border-radius:5px; background:#14181D;"></canvas>
             <div style="display:flex; gap:14px; margin-top:8px; font-size:0.8rem;">
                 <label style="flex:1;">間引き（約Nコマおき・時間等間隔）: <span id="strobe-n-val">1</span>
                     <input type="range" id="strobe-n" min="1" max="10" value="1" style="width:100%;">
@@ -2740,7 +2992,7 @@ function setupStrobe() {
             </div>
             <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
                 <button class="btn btn-primary" id="btn-strobe-save" style="flex:1;">PNG保存</button>
-                <span id="strobe-status" style="font-size:0.75rem; color:#8A95A3;"></span>
+                <span id="strobe-status" style="font-size:0.75rem; color:#52606D;"></span>
             </div>
         `;
         showInputDialog('ストロボ写真', body, '', () => {});

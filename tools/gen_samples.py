@@ -10,6 +10,7 @@
 
 真値の一覧は MANUAL.md「サンプル動画の真値」を参照（このファイルが一次情報源）。
 """
+import math
 import subprocess
 import numpy as np
 import cv2
@@ -123,6 +124,25 @@ def gen_projectile():
     encode("projectile.mp4", frames, W, H)
 
 
+def gen_oblique():
+    """斜方投射（横）: scale 300px=1m, v0=4.9m/s・45°、同じ高さに戻るまで
+    (numpy無し環境では tools/gen_oblique_pil.py が同じ真値・見た目で生成する)"""
+    W, H, PPM = 960, 540, 300
+    V0, ANGLE = 4.9, math.radians(45.0)
+    v0x, v0y = V0 * math.cos(ANGLE), V0 * math.sin(ANGLE)
+    n = int(2 * v0y / G * FPS) + 1  # 0.707s
+    frames = []
+    for i in range(n):
+        t = i / FPS
+        f = new_frame(W, H)
+        draw_scale_bar(f, 20, H - 30, PPM)
+        x = 60 + v0x * t * PPM
+        y = 480 - (v0y * t - 0.5 * G * t * t) * PPM
+        ball(f, x, y, 12, AMBER)
+        frames.append(f)
+    encode("oblique_throw.mp4", frames, W, H)
+
+
 def _collision(name, m1, m2, u1, e, r1, r2):
     """1次元衝突（横）: 左の球(物体1)が u1 で静止球(物体2)に衝突。反発係数 e。"""
     W, H, PPM = 960, 540, 300
@@ -164,6 +184,7 @@ def main():
     gen_free_fall()
     gen_vertical_throw()
     gen_projectile()
+    gen_oblique()
     v1, v2 = _collision("collision_elastic.mp4", 2.0, 1.0, 1.5, 1.0, 20, 14)
     print(f"    弾性(m1:m2=2:1, u1=1.5): v1'={v1:.3f} v2'={v2:.3f} m/s")
     v1, v2 = _collision("collision_inelastic.mp4", 1.0, 1.0, 2.0, 0.0, 16, 16)
