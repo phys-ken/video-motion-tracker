@@ -302,6 +302,19 @@ body {
 .trim-guide { font-size: 0.84rem; line-height: 1.6; margin-bottom: 8px; }
 .trim-guide b { color: var(--accent-strong); }
 
+/* 長い動画の警告（トリミング必須の案内） */
+.trim-long-warn {
+    background: var(--cal-soft);
+    border-left: 3px solid var(--cal);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+.trim-long-warn b { color: var(--cal); }
+
 #trim-preview {
     display: block;
     width: 100%;
@@ -612,6 +625,48 @@ details.panel-collapsible[open] > summary h2::after { transform: rotate(180deg);
 
 /* ---- データパネル & テーブル ------------------------------------- */
 .data-panel { min-height: 0; }
+
+/* 打点マップ（コマごとの打点状況チップ） */
+.hit-map-wrap { display: flex; flex-direction: column; gap: 6px; }
+.hit-map-label { font-size: 0.72rem; color: var(--text-sub); }
+.hit-map {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    max-height: 150px;
+    overflow-y: auto;
+    padding: 2px;
+}
+.hit-chip {
+    min-width: 30px;
+    height: 26px;
+    padding: 0 4px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-sub);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.68rem;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+.hit-chip.has { color: #FFFFFF; font-weight: 700; }
+.hit-chip.current {
+    outline: 2px solid var(--text);
+    outline-offset: 1px;
+}
+@keyframes hit-chip-flash {
+    0%, 60% { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 5px var(--accent); }
+    100%    { box-shadow: none; }
+}
+.hit-chip.flash { animation: hit-chip-flash 0.9s ease-out; }
+.hit-map-hint {
+    font-size: 0.74rem;
+    color: var(--text-sub);
+    line-height: 1.5;
+    width: 100%;
+}
 
 /* 数値表は普段は畳む */
 .table-details > summary {

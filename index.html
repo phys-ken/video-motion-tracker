@@ -240,6 +240,11 @@
                             保存
                         </button>
                     </div>
+                    <!-- 打点マップ: コマごとの打点状況（タップでそのコマへ） -->
+                    <div class="hit-map-wrap">
+                        <div class="hit-map-label">打点マップ — 塗り＝打点済み・枠＝現在のコマ（タップで移動）</div>
+                        <div class="hit-map" id="hit-map"></div>
+                    </div>
                     <!-- 数値表は普段は畳んでおく（編集は動画上・グラフの点タップで足りる） -->
                     <details class="table-details">
                         <summary>数値表を表示</summary>
@@ -332,6 +337,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-08-13b"></script>
+    <script src="app.js?v=2026-08-13c"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-08-13b';
+const APP_VERSION = '2026-08-13c';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -55,15 +55,17 @@ const appState = {
 // グローバル（window）に公開してテストスイートからアクセス可能にする
 window.appState = appState;
 
-// 物体カラーマップ (10色)。先頭4色は白背景で3:1以上のコントラストを持ち、
-// 色覚多様性でも分離する Okabe-Ito / Tol 系（グラフ線と映像上マーカーで共用）。
+// 物体カラーマップ (10色)。グラフ線・映像上マーカー・打点マップで共用。
+// 物体1は「実写映像にめったに出ない色相」のマゼンタ（映像注釈の定番色。
+// 空・肌・床・黒板と被らず、白背景グラフでも4.7:1のコントラスト）。
+// 物体2・3はOkabe-Ito系で、マゼンタとは色覚多様性でも分離する。
 const COLOR_MAP = [
-    '#0072B2', // 青 (物体1)
+    '#D81B8C', // マゼンタ (物体1)
     '#D55E00', // 朱 (物体2)
     '#009E73', // 緑 (物体3)
-    '#AA4499', // 紫
+    '#0072B2', // 青
     '#B45309', // 琥珀
-    '#005082', // 濃青
+    '#AA4499', // 紫
     '#A34700', // 濃朱
     '#007455', // 濃緑
     '#52606D', // グレー
@@ -144,7 +146,10 @@ function undo() {
         const desc = describeUndo(before, appState.trackingData);
         if (desc) {
             showStepBadge(desc.text);
-            if (desc.frame !== null) seekToFrame(desc.frame);
+            if (desc.frame !== null) {
+                seekToFrame(desc.frame);
+                flashHitChip(desc.frame); // 打点マップ上でも場所を教える
+            }
         } else {
             showStepBadge('取り消しました');
         }
@@ -303,6 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSampleLoad();
     setupPlaybackControls();
     setupRangeControls();
+    setupHitMap();
     setupDebugConsole();
     setupCanvasTouch();
     setupModeButtons();
@@ -599,33 +605,66 @@ function hideScanProgress() {
 // --- コンテナ解析（mp4box.js）: デコードもシークもせず実サンプル時刻を瞬時に取得 ---
 // iPad撮影の .mov/.mp4（H.264/HEVC・スロモVFR含む）はここで数百msで時刻表が完成する。
 // パース不能な形式や検証NG時のみ、従来のシーク走査へフォールバックする。
+// 長い動画をうっかり読み込んでもクラッシュしないための上限。
+// これ以下のファイルは従来どおり全読みでパースし、超えるものは
+// 「先頭＋末尾だけ」を疎に渡してmoov(サンプル表)を探す（数GBの動画を
+// ArrayBufferに全読みするとiPad Safariが落ちるため）。
+const CONTAINER_WHOLE_READ_MAX = 96 * 1024 * 1024;
+const CONTAINER_HEAD_BYTES = 16 * 1024 * 1024;
+const CONTAINER_TAIL_BYTES = 48 * 1024 * 1024;
+
 async function buildTimesFromContainer(blob) {
     if (typeof MP4Box === 'undefined' || !blob) return null;
     try {
-        const buf = await blob.arrayBuffer();
-        return await new Promise((resolve) => {
-            const mp4 = MP4Box.createFile();
-            let nbSamples = 0;
-            const times = [];
-            const to = setTimeout(() => resolve(null), 8000); // 安全網
-            const done = (r) => { clearTimeout(to); resolve(r); };
-            mp4.onError = () => done(null);
-            mp4.onReady = (info) => {
-                const track = (info.videoTracks && info.videoTracks[0]) || null;
-                if (!track || !track.nb_samples) { done(null); return; }
-                nbSamples = track.nb_samples;
-                mp4.setExtractionOptions(track.id, null, { nbSamples: nbSamples });
-                mp4.start();
-            };
-            mp4.onSamples = (id, user, samples) => {
-                for (const s of samples) times.push(s.cts / s.timescale);
-                if (nbSamples && times.length >= nbSamples) done(times);
-            };
+        if (blob.size <= CONTAINER_WHOLE_READ_MAX) {
+            const buf = await blob.arrayBuffer();
             buf.fileStart = 0;
-            mp4.appendBuffer(buf);
-            mp4.flush();
-        });
+            return await parseTimesWithMp4box([buf], false);
+        }
+        // 疎読み: moovは先頭(faststart)か末尾(カメラ撮って出し)にあることがほとんど
+        logDebug(`大きな動画(${Math.round(blob.size / 1048576)}MB)のため疎読みでコンテナ解析します`);
+        const headBuf = await blob.slice(0, CONTAINER_HEAD_BYTES).arrayBuffer();
+        headBuf.fileStart = 0;
+        const tailStart = Math.max(CONTAINER_HEAD_BYTES, blob.size - CONTAINER_TAIL_BYTES);
+        const tailBuf = await blob.slice(tailStart, blob.size).arrayBuffer();
+        tailBuf.fileStart = tailStart;
+        return await parseTimesWithMp4box([headBuf, tailBuf], true);
     } catch (e) { return null; }
+}
+
+function parseTimesWithMp4box(buffers, sparse) {
+    return new Promise((resolve) => {
+        const mp4 = MP4Box.createFile();
+        let nbSamples = 0;
+        const times = [];
+        const to = setTimeout(() => resolve(null), 8000); // 安全網
+        const done = (r) => { clearTimeout(to); resolve(r); };
+        mp4.onError = () => done(null);
+        mp4.onReady = (info) => {
+            const track = (info.videoTracks && info.videoTracks[0]) || null;
+            if (!track || !track.nb_samples) { done(null); return; }
+            nbSamples = track.nb_samples;
+            // moovのサンプル表からctsを直接読む（mdat不要＝疎読みでも動く）
+            if (typeof mp4.getTrackSamplesInfo === 'function') {
+                try {
+                    const infos = mp4.getTrackSamplesInfo(track.id);
+                    if (infos && infos.length >= 2) {
+                        done(infos.map(s => s.cts / s.timescale));
+                        return;
+                    }
+                } catch (e) { /* 下の抽出方式へ */ }
+            }
+            if (sparse) { done(null); return; } // 疎読みではサンプル抽出はできない
+            mp4.setExtractionOptions(track.id, null, { nbSamples: nbSamples });
+            mp4.start();
+        };
+        mp4.onSamples = (id, user, samples) => {
+            for (const s of samples) times.push(s.cts / s.timescale);
+            if (nbSamples && times.length >= nbSamples) done(times);
+        };
+        for (const b of buffers) mp4.appendBuffer(b);
+        mp4.flush();
+    });
 }
 
 // コンテナ由来の時刻表が <video> の再生時間軸と一致しているか、実シークで数点だけ検証。
@@ -701,11 +740,18 @@ async function startFrameScan() {
         }
     } catch (e) { logDebug('コンテナ解析に失敗: ' + (e && e.message)); }
 
-    // 2) フォールバック: 従来のシーク走査
+    // 2) フォールバック: 従来のシーク走査。
+    //    長い動画は全コマ走査すると数分〜フリーズ級になるためスキップし、
+    //    fps換算（精度はやや低下・機能は無傷）へ落とす。
+    const SCAN_MAX_SECONDS = 45;
     if (!result) {
-        try { result = rvfcSupported ? await scanAllFrames(v) : await scanGridFallback(v); }
-        catch (e) { logDebug('フレーム走査に失敗: ' + (e && e.message)); }
-        if (result) appState.dedupDone = true; // 走査は複製除外込み
+        if (appState.videoDuration > SCAN_MAX_SECONDS) {
+            logDebug(`長い動画(${appState.videoDuration.toFixed(0)}s)のため全コマ走査をスキップし、fps換算で続行します`);
+        } else {
+            try { result = rvfcSupported ? await scanAllFrames(v) : await scanGridFallback(v); }
+            catch (e) { logDebug('フレーム走査に失敗: ' + (e && e.message)); }
+            if (result) appState.dedupDone = true; // 走査は複製除外込み
+        }
     }
     appState.isScanning = false;
     hideScanProgress();
@@ -734,6 +780,7 @@ async function startFrameScan() {
     persistState();
     updateGraph();
     updateStepGuide();
+    updateHitMap();
 }
 
 // 全フレームをシークで列挙し、{実時刻, 複製フラグ} を作る。
@@ -1112,6 +1159,63 @@ function clampToRange(frame) {
     return Math.max(appState.rangeIn, Math.min(appState.rangeOut, frame));
 }
 
+// --- プッシュ遷移（パワポの「プッシュ」） -----------------------------
+// 新しいコマが送りの向きから入り、古いコマを押し出す。映像の中身や背景色に
+// 依存せず「ページが変わった」ことが必ず見える（真っ黒な動画でも分かる）。
+const PUSH_MS_STEP = 130;  // ±1コマ
+const PUSH_MS_FLIP = 60;   // パラパラ送り中の1コマあたり
+const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let pushAnimating = false;
+
+function snapshotCanvas() {
+    const c = appState.canvas;
+    if (!c || !c.width || !c.height) return null;
+    const s = document.createElement('canvas');
+    s.width = c.width; s.height = c.height;
+    s.getContext('2d').drawImage(c, 0, 0);
+    return s;
+}
+
+function runPushTransition(snapOld, snapNew, dir, durMs) {
+    return new Promise(resolve => {
+        const ctx = appState.ctx;
+        const W = appState.canvas ? appState.canvas.width : 0;
+        const H = appState.canvas ? appState.canvas.height : 0;
+        if (!ctx || !snapOld || !snapNew || !W || prefersReducedMotion) { resolve(); return; }
+        pushAnimating = true;
+        const t0 = performance.now();
+        const tick = () => {
+            const p = Math.min(1, (performance.now() - t0) / durMs);
+            const e = 1 - (1 - p) * (1 - p); // easeOut
+            ctx.clearRect(0, 0, W, H);
+            ctx.drawImage(snapOld, Math.round(-dir * e * W), 0);
+            ctx.drawImage(snapNew, Math.round(dir * (1 - e) * W), 0);
+            if (p < 1) {
+                requestAnimationFrame(tick);
+            } else {
+                pushAnimating = false;
+                drawVideoFrame(); // 通常描画（照準・マーカー込み）へ戻す
+                resolve();
+            }
+        };
+        requestAnimationFrame(tick);
+    });
+}
+
+// シークしてからプッシュ遷移で見せる（コマ送りボタン用）
+async function seekWithPush(target, durMs) {
+    const dir = target >= appState.currentFrame ? 1 : -1;
+    const snapOld = (!prefersReducedMotion && !pushAnimating) ? snapshotCanvas() : null;
+    seekToFrame(target);
+    await whenSeekIdle();
+    if (snapOld) {
+        updateOffscreenCanvas();
+        drawVideoFrame();
+        await runPushTransition(snapOld, snapshotCanvas(), dir, durMs);
+    }
+}
+
 // ジョグボタン: タップ＝1回、長押し＝連続コマ送り（450ms後から150ms間隔）
 function attachJogButton(btn, delta) {
     if (!btn) return;
@@ -1157,9 +1261,9 @@ function stepFrame(delta) {
         return;
     }
     if (Math.abs(target - appState.currentFrame) <= 1) {
-        seekToFrame(target);
         showStepBadge(delta > 0 ? '+1' : '−1');
         pulseFrameLabel();
+        seekWithPush(target, PUSH_MS_STEP);
         return;
     }
     runFlipTo(target);
@@ -1176,8 +1280,8 @@ async function runFlipTo(target) {
             // 時間予算を使い切ったら残りは直行（遅い端末でも待たせない）
             const next = (performance.now() > deadline) ? flipTarget
                                                         : appState.currentFrame + dir;
-            seekToFrame(next);
-            await whenSeekIdle();
+            // 1コマごとに短いプッシュ遷移（背景が真っ黒でもめくれが見える）
+            await seekWithPush(next, PUSH_MS_FLIP);
             const moved = appState.currentFrame - startFrame;
             showStepBadge(`${moved > 0 ? '+' : ''}${moved}`, true);
             pulseFrameLabel();
@@ -1203,8 +1307,10 @@ function showStepBadge(text, sticky) {
 }
 
 // コマ番号は常に「現在 / 総数」で表示（今どのあたりか一目で分かる）。
-// 再生バーの表示に加え、映像右上の常設カウンタとトリミングダイアログにも同期する。
+// 再生バーの表示に加え、映像右上の常設カウンタ・トリミングダイアログ・
+// 打点マップの現在位置にも同期する。
 function updateFrameLabel(frame) {
+    updateHitMapCurrent();
     const text = `${frame} / ${appState.totalFrames}`;
     const lbl = document.getElementById('lbl-frame');
     if (lbl) lbl.textContent = text;
@@ -1358,8 +1464,11 @@ function showTrimDialog(onClose) {
     const fps = appState.videoFps ? `${+appState.videoFps.toFixed(2)} fps` : '-- fps';
     const dur = appState.videoDuration ? `${appState.videoDuration.toFixed(2)} 秒` : '';
     titleEl.textContent = '読み込み完了';
+    const longVideo = appState.totalFrames + 1 > 600;
     bodyEl.innerHTML = `
         <div class="trim-info">${appState.totalFrames + 1} コマ / ${fps} / ${dur}</div>
+        ${longVideo ? `<p class="trim-long-warn">長い動画です。解析したい運動の<b>数秒だけ</b>に
+            「ここから」「ここまで」で必ず絞ってください（絞らないと打点マップなど一部の表示が制限されます）。</p>` : ''}
         <p class="trim-guide">運動していない<b>前後のコマをカット</b>しておくと、あとの点打ちがラクです。<br>
            スライダで運動の<b>開始</b>コマへ→「ここから」、<b>終了</b>コマへ→「ここまで」。</p>
         <canvas id="trim-preview" width="640" height="300"></canvas>
@@ -1456,6 +1565,13 @@ function pumpSeekQueue() {
         notifySeekIdleIfDone();
     };
 
+    // 同一時刻へのシークは seeked も rVFC も発火しない（キューが安全網の
+    // 1.5秒まで詰まり、直後のコマ送りが無反応になる）。即完了扱いにする。
+    if (Math.abs(v.currentTime - targetTime) < 1e-4) {
+        finish(null);
+        return;
+    }
+
     if (rvfcSupported && !appState.isScanning) {
         v.requestVideoFrameCallback((now, meta) => finish(meta.mediaTime));
     } else {
@@ -1463,7 +1579,7 @@ function pumpSeekQueue() {
         v.addEventListener('seeked', onSeeked);
     }
     v.currentTime = targetTime;
-    setTimeout(() => finish(null), 1500); // 同一フレームへのシーク等でrVFCが発火しない場合の安全網
+    setTimeout(() => finish(null), 1500); // rVFCが発火しない端末・状況の安全網
 }
 
 // 再生時刻 t(s) → コマ番号（実時刻表を二分探索。表が無ければfps換算）
@@ -1955,8 +2071,18 @@ function getCrosshairVideoCoord() {
 
 // --- 「確定」ボタン: 十字位置を現在の保留アクションに応じて確定する ---
 function confirmAtCrosshair() {
-    if (!appState.videoElement.src || appState.videoElement.readyState < 2) {
+    const v = appState.videoElement;
+    if (!v.src) {
         logDebug("動画が読み込まれていません。");
+        return;
+    }
+    // シーク直後は readyState が一時的に 2 未満へ落ちる。ここで黙って捨てると
+    // 連打時・遅い端末でタップが飲み込まれるので、シーク完了を待って実行する。
+    if (v.readyState < 2 || seekBusy || seekPendingFrame !== null) {
+        whenSeekIdle().then(() => setTimeout(() => {
+            if (v.readyState >= 2) confirmAtCrosshair();
+            else logDebug('動画データの準備待ちで確定できませんでした。もう一度押してください。');
+        }, 30));
         return;
     }
     const vPos = getCrosshairVideoCoord();
@@ -2285,49 +2411,52 @@ function setupAutoTrackerUI() {
 }
 
 // --- マーカー描画 ---
+// 映像上に描くのは「現在コマの点」だけ（軌跡は描かない。過去の点は
+// 打点マップ・y-x軌道グラフ・ストロボ点マーカーで見る）。
+// マーカーは白＋黒の二重縁取りで、明るい背景でも暗い背景でも必ず浮く。
 function drawTrackingPoints() {
     const scale = appState.viewState.scale;
     const baseRadius = 6;
     const r = baseRadius / scale;
-    
+
     appState.trackingData.forEach(p => {
+        if (p.frame !== appState.currentFrame) return;
         const local = videoToLocalCanvas(p.x, p.y);
-        
-        if (p.frame === appState.currentFrame) {
-            // 選択されている場合はハイライト表示を追加
-            if (p.id === appState.selectedPointId) {
-                appState.ctx.beginPath();
-                appState.ctx.arc(local.x, local.y, r * 1.6, 0, Math.PI * 2);
-                appState.ctx.strokeStyle = UI_COLORS.accentBright; // 選択強調の外枠
-                appState.ctx.lineWidth = 2.0 / scale;
-                appState.ctx.stroke();
-            }
-            
-            // 現在フレームのマーカー
+
+        // 選択されている場合はハイライト表示を追加
+        if (p.id === appState.selectedPointId) {
             appState.ctx.beginPath();
-            appState.ctx.arc(local.x, local.y, r, 0, Math.PI * 2);
-            appState.ctx.fillStyle = COLOR_MAP[(p.objectId - 1) % COLOR_MAP.length];
-            appState.ctx.fill();
-            appState.ctx.strokeStyle = '#000000';
-            appState.ctx.lineWidth = 1.5 / scale;
+            appState.ctx.arc(local.x, local.y, r * 1.9, 0, Math.PI * 2);
+            appState.ctx.strokeStyle = UI_COLORS.accentBright; // 選択強調の外枠
+            appState.ctx.lineWidth = 2.0 / scale;
             appState.ctx.stroke();
-            
-            // 十字マーク
-            appState.ctx.beginPath();
-            appState.ctx.moveTo(local.x - r * 1.5, local.y);
-            appState.ctx.lineTo(local.x + r * 1.5, local.y);
-            appState.ctx.moveTo(local.x, local.y - r * 1.5);
-            appState.ctx.lineTo(local.x, local.y + r * 1.5);
-            appState.ctx.strokeStyle = '#ffffff';
-            appState.ctx.lineWidth = 1.0 / scale;
-            appState.ctx.stroke();
-        } else {
-            // 他のフレームの軌跡表示
-            appState.ctx.beginPath();
-            appState.ctx.arc(local.x, local.y, r * 0.4, 0, Math.PI * 2);
-            appState.ctx.fillStyle = COLOR_MAP[(p.objectId - 1) % COLOR_MAP.length] + '88';
-            appState.ctx.fill();
         }
+
+        // 外側の白リング（暗い背景対策）
+        appState.ctx.beginPath();
+        appState.ctx.arc(local.x, local.y, r + 1.5 / scale, 0, Math.PI * 2);
+        appState.ctx.strokeStyle = '#FFFFFF';
+        appState.ctx.lineWidth = 2.0 / scale;
+        appState.ctx.stroke();
+
+        // マーカー本体（物体色）＋黒縁（明るい背景対策）
+        appState.ctx.beginPath();
+        appState.ctx.arc(local.x, local.y, r, 0, Math.PI * 2);
+        appState.ctx.fillStyle = COLOR_MAP[(p.objectId - 1) % COLOR_MAP.length];
+        appState.ctx.fill();
+        appState.ctx.strokeStyle = '#000000';
+        appState.ctx.lineWidth = 1.2 / scale;
+        appState.ctx.stroke();
+
+        // 十字マーク
+        appState.ctx.beginPath();
+        appState.ctx.moveTo(local.x - r * 1.5, local.y);
+        appState.ctx.lineTo(local.x + r * 1.5, local.y);
+        appState.ctx.moveTo(local.x, local.y - r * 1.5);
+        appState.ctx.lineTo(local.x, local.y + r * 1.5);
+        appState.ctx.strokeStyle = '#ffffff';
+        appState.ctx.lineWidth = 1.0 / scale;
+        appState.ctx.stroke();
     });
 }
 
@@ -2409,6 +2538,7 @@ function updateDataTable() {
 
     if (filteredData.length === 0) {
         tableBody.innerHTML = `<tr class="empty-row"><td colspan="4">データがありません</td></tr>`;
+        updateHitMap();
         updateStepGuide();
         return;
     }
@@ -2456,7 +2586,78 @@ function updateDataTable() {
         tableBody.appendChild(tr);
     });
 
+    updateHitMap();
     updateStepGuide();
+}
+
+// --- 打点マップ --------------------------------------------------------
+// 解析範囲のコマを番号チップで並べ、打点済み＝物体色・未打＝白抜き・
+// 現在コマ＝太枠で示す。チップのタップでそのコマへジャンプ。
+// 「どのコマに座標が決まっているか」「取消で何が消えたか」が一目で分かる。
+const HIT_MAP_MAX_CHIPS = 400; // 長い動画対策: DOMを数千個作るとフリーズする
+
+function hitChipHtml(frame, hasPoint) {
+    const color = COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
+    const style = hasPoint ? ` style="background:${color};border-color:${color};"` : '';
+    return `<button class="hit-chip${hasPoint ? ' has' : ''}" data-frame="${frame}"${style}>${frame}</button>`;
+}
+
+function updateHitMap() {
+    const map = document.getElementById('hit-map');
+    if (!map) return;
+    if (!appState.videoElement || !appState.videoElement.src || appState.totalFrames <= 0) {
+        map.innerHTML = '<span class="hit-map-hint">動画を読み込むと、コマごとの打点状況がここに並びます</span>';
+        return;
+    }
+    const hitFrames = new Set(appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId)
+        .map(p => p.frame));
+    const lo = appState.rangeIn, hi = appState.rangeOut;
+    const len = hi - lo + 1;
+    let html = '';
+    if (len > HIT_MAP_MAX_CHIPS) {
+        // 全コマ分のチップは作らない（長い動画でのフリーズ防止）。打点済みだけ並べる
+        html = `<span class="hit-map-hint">範囲が ${len} コマと長いため打点済みのコマだけ表示中。`
+            + `読み込み時のダイアログか [|&lt;][&gt;|] で範囲を絞ると全コマ表示になります。</span>`;
+        html += [...hitFrames].filter(f => f >= lo && f <= hi).sort((a, b) => a - b)
+            .map(f => hitChipHtml(f, true)).join('');
+    } else {
+        for (let f = lo; f <= hi; f++) html += hitChipHtml(f, hitFrames.has(f));
+    }
+    map.innerHTML = html;
+    updateHitMapCurrent();
+}
+
+// 現在コマの太枠だけを差し替える（コマ送りのたびに全チップを作り直さない）
+function updateHitMapCurrent() {
+    const map = document.getElementById('hit-map');
+    if (!map) return;
+    map.querySelectorAll('.hit-chip.current').forEach(el => el.classList.remove('current'));
+    const cur = map.querySelector(`.hit-chip[data-frame="${appState.currentFrame}"]`);
+    if (cur) cur.classList.add('current');
+}
+
+// 取消などで変化したチップを短く点滅させて場所を教える
+function flashHitChip(frame) {
+    const map = document.getElementById('hit-map');
+    if (!map) return;
+    const el = map.querySelector(`.hit-chip[data-frame="${frame}"]`);
+    if (el) {
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+        el.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function setupHitMap() {
+    const map = document.getElementById('hit-map');
+    if (!map) return;
+    map.addEventListener('click', (e) => {
+        const chip = e.target.closest('.hit-chip');
+        if (chip) seekToFrame(parseInt(chip.dataset.frame));
+    });
+    updateHitMap();
 }
 
 function deletePoint(id) {
