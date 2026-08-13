@@ -136,3 +136,41 @@ footer.doc-footer {
     h2 { break-after: avoid; }
     .card, .figure, .check, table { break-inside: avoid; }
 }
+
+/* ---- 手順書ナビ（相互リンク＋アプリへの導線。印刷時は非表示） ------- */
+.guide-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 14px 0 4px;
+    font-size: 0.85rem;
+}
+.guide-nav-label { color: var(--text-sub); font-size: 0.78rem; margin-right: 2px; }
+.guide-nav a {
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--text);
+    background: var(--surface);
+    line-height: 1.4;
+}
+.guide-nav a:hover { border-color: var(--accent); color: var(--accent-strong); }
+.guide-nav a[aria-current="page"] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-strong);
+    font-weight: 700;
+    pointer-events: none;
+}
+.guide-nav a.guide-nav-app {
+    margin-left: auto;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #FFFFFF;
+    font-weight: 700;
+}
+.guide-nav a.guide-nav-app:hover { background: var(--accent-strong); }
+
+@media print { .guide-nav { display: none; } }
