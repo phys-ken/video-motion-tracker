@@ -1772,7 +1772,14 @@ function updateActionHint() {
     }
     if (btnConfirm) {
         const span = btnConfirm.querySelector('.confirm-label');
-        if (span) span.textContent = label;
+        if (span) {
+            if (appState.pendingCapture === null) {
+                // 通常時は「（点を打つ）」を .confirm-sub に分け、狭い画面ではCSSで畳む
+                span.innerHTML = '確定<span class="confirm-sub">（点を打つ）</span>';
+            } else {
+                span.textContent = label;
+            }
+        }
     }
     if (hint) hint.textContent = text;
 }
