@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>実験手順書 — 自由落下から重力加速度を求める</title>
+<style>
+/* 生徒向け実験手順書。アプリ本体と同じ配色体系（白ベース・操作の青・校正のアンバー） */
+:root {
+    --text: #1F2933;
+    --text-sub: #52606D;
+    --line: #CBD2D9;
+    --line-soft: #E4E7EB;
+    --accent: #0B6BCB;
+    --accent-strong: #095CB5;
+    --accent-soft: #E3EEF9;
+    --cal: #B45309;
+    --cal-soft: #FBF1E1;
+    --danger: #B42318;
+    --bg: #F7F8FA;
+    --surface: #FFFFFF;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.8;
+    font-size: 16px;
+}
+.page { max-width: 760px; margin: 0 auto; padding: 24px 18px 80px; }
+
+header.doc-header {
+    border-bottom: 3px solid var(--accent);
+    padding: 18px 0 14px;
+    margin-bottom: 8px;
+}
+.doc-label { font-size: 0.82rem; color: var(--text-sub); letter-spacing: 0.06em; }
+h1 { font-size: 1.5rem; line-height: 1.4; margin-top: 4px; }
+.doc-meta { font-size: 0.85rem; color: var(--text-sub); margin-top: 6px; }
+
+.goal {
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 18px 0;
+    font-size: 0.95rem;
+}
+.goal b { color: var(--accent-strong); }
+
+h2 {
+    font-size: 1.15rem;
+    margin: 40px 0 12px;
+    padding-left: 12px;
+    border-left: 4px solid var(--accent);
+    line-height: 1.5;
+}
+h2 .stepno {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #FFFFFF;
+    background: var(--accent);
+    border-radius: 4px;
+    padding: 1px 8px;
+    margin-right: 8px;
+    vertical-align: 2px;
+    letter-spacing: 0.04em;
+}
+h3 { font-size: 1rem; margin: 20px 0 8px; }
+
+p, ul, ol { margin: 10px 0; }
+ul, ol { padding-left: 1.5em; }
+li { margin: 6px 0; }
+b.term { color: var(--accent-strong); }
+.cal-term { color: var(--cal); font-weight: 700; }
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 14px 0;
+}
+.card.warn { border-left: 4px solid var(--danger); }
+.card.warn .card-title { color: var(--danger); }
+.card.tip { border-left: 4px solid var(--cal); background: var(--cal-soft); }
+.card.tip .card-title { color: var(--cal); }
+.card-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
+.card p:first-child { margin-top: 0; }
+.card p:last-child, .card ul:last-child { margin-bottom: 0; }
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    margin: 12px 0;
+    background: var(--surface);
+}
+th, td { border: 1px solid var(--line-soft); padding: 7px 10px; text-align: left; }
+th { background: #F1F3F6; font-size: 0.82rem; color: var(--text-sub); }
+td.num { font-variant-numeric: tabular-nums; }
+
+.figure {
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 14px 0;
+    text-align: center;
+}
+.figure svg { max-width: 100%; height: auto; }
+.figure figcaption { font-size: 0.8rem; color: var(--text-sub); margin-top: 6px; }
+
+.check {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 14px 0;
+}
+.check ul { list-style: none; padding-left: 0; }
+.check li { padding-left: 1.7em; position: relative; }
+.check li::before {
+    content: "□";
+    position: absolute;
+    left: 2px;
+    color: var(--accent);
+    font-weight: 700;
+}
+
+footer.doc-footer {
+    margin-top: 56px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 0.78rem;
+    color: var(--text-sub);
+}
+
+@media print {
+    body { background: #FFFFFF; font-size: 11pt; }
+    .page { max-width: none; padding: 0; }
+    h2 { break-after: avoid; }
+    .card, .figure, .check, table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+    <div class="doc-label">物理基礎・実験手順書（生徒用）</div>
+    <h1>自由落下の動画解析 — 重力加速度 g を求める</h1>
+    <div class="doc-meta">用意するアプリ: 動画解析トラッカー（先生から配布されたURLをブラウザで開く。インストール不要）</div>
+</header>
+
+<div class="goal">
+    <b>今日のゴール:</b> テニスボールの落下をスマホ／iPadで撮影し、
+    動画から位置を読み取って <b>v–t グラフの傾き</b> から重力加速度 g を測定する。
+    うまく測れると <b>9.8 m/s² に近い値</b>が自分のデータから出てくる。
+</div>
+
+<h2>準備するもの（班ごと）</h2>
+<ul>
+    <li><b>テニスボール</b>（落とすもの。なぜテニスボールかは最後のコラム参照）</li>
+    <li><b>1 m ものさし</b>（または 10 cm 方眼を印刷した模造紙）— 長さの基準になる</li>
+    <li>撮影用の iPad または スマホ 1台（解析は各自の端末でOK）</li>
+    <li>カメラを固定できるもの（三脚。なければ机＋本で固定）</li>
+    <li>テープ（ものさし・模造紙を壁に貼る）</li>
+</ul>
+
+<h2><span class="stepno">手順 1</span>撮影する（ここが一番大事）</h2>
+
+<div class="card warn">
+    <div class="card-title">最重要ルール：カメラの「ビデオ」モードで撮る。スローは使わない</div>
+    <p>スローモーションで撮った動画は、ファイルの中の「時間」が実際と食い違うため、
+    そのまま解析すると<b>重力加速度が数十分の一</b>というありえない値になります。
+    ふつうのビデオなら何も気にしなくて大丈夫。</p>
+</div>
+
+<figure class="figure">
+<svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="撮影配置の側面図">
+    <!-- 床 -->
+    <line x1="20" y1="270" x2="620" y2="270" stroke="#52606D" stroke-width="2"/>
+    <!-- 壁 -->
+    <line x1="80" y1="20" x2="80" y2="270" stroke="#52606D" stroke-width="2"/>
+    <!-- ものさし（壁沿い・アンバー） -->
+    <rect x="84" y="60" width="10" height="200" fill="#FBF1E1" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="84" y1="110" x2="94" y2="110" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="84" y1="160" x2="94" y2="160" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="84" y1="210" x2="94" y2="210" stroke="#B45309" stroke-width="1.5"/>
+    <text x="102" y="44" font-size="13" fill="#B45309">1 m ものさし（落下と同じ面に貼る）</text>
+    <!-- ボールと落下矢印 -->
+    <circle cx="130" cy="70" r="10" fill="#C7D912" stroke="#1F2933" stroke-width="1"/>
+    <line x1="130" y1="88" x2="130" y2="240" stroke="#0B6BCB" stroke-width="2" stroke-dasharray="5 4"/>
+    <polygon points="130,252 124,238 136,238" fill="#0B6BCB"/>
+    <text x="146" y="180" font-size="13" fill="#0B6BCB">落下 1.5〜2 m</text>
+    <!-- カメラ（三脚） -->
+    <rect x="470" y="150" width="34" height="22" rx="3" fill="#1F2933"/>
+    <polygon points="470,155 456,161 470,167" fill="#1F2933"/>
+    <line x1="487" y1="172" x2="472" y2="268" stroke="#1F2933" stroke-width="2"/>
+    <line x1="487" y1="172" x2="502" y2="268" stroke="#1F2933" stroke-width="2"/>
+    <line x1="487" y1="172" x2="487" y2="268" stroke="#1F2933" stroke-width="2"/>
+    <text x="452" y="140" font-size="13" fill="#1F2933">カメラ（固定・縦向き）</text>
+    <!-- 距離表示 -->
+    <line x1="130" y1="286" x2="487" y2="286" stroke="#52606D" stroke-width="1"/>
+    <line x1="130" y1="280" x2="130" y2="292" stroke="#52606D" stroke-width="1"/>
+    <line x1="487" y1="280" x2="487" y2="292" stroke="#52606D" stroke-width="1"/>
+    <text x="270" y="282" font-size="13" fill="#52606D">2〜3 m 離れる</text>
+    <!-- 高さの目印 -->
+    <line x1="415" y1="161" x2="415" y2="270" stroke="#52606D" stroke-width="1" stroke-dasharray="3 3"/>
+    <text x="330" y="120" font-size="13" fill="#52606D">レンズの高さ＝落下経路の真ん中</text>
+</svg>
+<figcaption>撮影の配置（横から見た図）。カメラは壁に正対させる。</figcaption>
+</figure>
+
+<ol>
+    <li>壁に<b>1 m ものさし（または方眼模造紙）</b>をテープで貼る。
+        <b class="term">ボールが落ちるのと同じ面</b>に貼ること
+        （手前や奥に10 cmずれると、それだけで結果が数％狂う）。</li>
+    <li>カメラを壁から <b>2〜3 m</b> 離し、<b>縦向き</b>で固定する。
+        レンズの高さは<b>落下範囲の真ん中</b>に合わせる。</li>
+    <li>できれば設定を確認: 設定 → カメラ → ビデオ撮影 → <b>1080p / 60fps</b>（30fpsでも可）。</li>
+    <li>録画を開始 → ものさしのすぐ横で、ボールを<b>そっと離して</b>1.5〜2 m 落とす
+        （投げ下ろさない。「静かに離す」が初速度 0 の条件）→ 録画を止める。</li>
+    <li>撮れた動画を確認。<b>ボールがブレて楕円に見えるなら、もっと明るい場所</b>
+        （窓際・照明の下）で撮り直す。</li>
+</ol>
+
+<div class="check">
+    <div class="card-title">撮影チェックリスト</div>
+    <ul>
+        <li>スローではなく「ビデオ」で撮った</li>
+        <li>カメラは固定して動かしていない（手持ちで追いかけない）</li>
+        <li>ものさしが落下と同じ面に貼ってあり、画面に写っている</li>
+        <li>落下の最初から最後まで画面に入っている</li>
+        <li>ボールがブレずに丸く写っている</li>
+    </ul>
+</div>
+
+<h2><span class="stepno">手順 2</span>動画を読み込んで、前後の余分をカット</h2>
+<ol>
+    <li>アプリを開き、<b>[動画を選択]</b> で撮った動画を読み込む
+        （動画は端末の中だけで処理される。どこにも送信されない）。</li>
+    <li>読み込みが終わると<b>「読み込み完了」の画面</b>が出て、
+        「43 コマ / 60 fps / 0.72 秒」のように動画の情報が表示される。</li>
+    <li>そのままスライダを動かして、<b>ボールが手を離れた直後のコマ</b>で <b>[ここから]</b>、
+        <b>床に着く直前のコマ</b>で <b>[ここまで]</b> を押す。</li>
+    <li><b>[はじめる]</b> を押して閉じる。</li>
+</ol>
+<p>これで「動きのないコマ」を飛ばして、運動の部分だけを解析できる。</p>
+
+<h2><span class="stepno">手順 3</span>スケール設定（長さの基準を教える）</h2>
+<ol>
+    <li>右パネルの <span class="cal-term">[スケール設定]</span> を押す。</li>
+    <li>映像を1本指でドラッグして、<b>中央の十字をものさしの片端</b>に合わせ、[確定]。</li>
+    <li>十字を<b>もう一方の端</b>に合わせて、もう一度 [確定]。</li>
+    <li>実際の長さを cm で入力（1 mなら「100」）→ OK。</li>
+</ol>
+<p>2本指ピンチで拡大すると、端にぴったり合わせやすい。</p>
+
+<h2><span class="stepno">手順 4</span>原点設定（座標の 0 を決める）</h2>
+<ol>
+    <li><span class="cal-term">[原点を設定]</span> を押す。</li>
+    <li>十字を<b>落下開始の位置</b>（最初のコマのボールの中心）に合わせて [確定]。</li>
+</ol>
+<p>以後、上が ＋y。落ちていくと y はマイナスに増えていく。</p>
+
+<h2><span class="stepno">手順 5</span>点を打つ（トラッキング）</h2>
+<ol>
+    <li>映像をドラッグして、<b>十字をボールの中心</b>に合わせる。</li>
+    <li><b>[確定（点を打つ）]</b> を押す → 点が記録され、自動で次のコマへ進む。</li>
+    <li>また十字を合わせて [確定] …を最後のコマまで繰り返す。</li>
+</ol>
+<ul>
+    <li>映像右上の「12 / 38」が、いま何コマ目かを常に教えてくれる。</li>
+    <li>間違えたら <b>[取消]</b>。どの点が取り消されたか映像上に表示される。</li>
+    <li>コマ数が多いときは「ステップ幅」を 2〜3 にすると間引いて打てる。</li>
+</ul>
+
+<h2><span class="stepno">手順 6</span>グラフから g を読み取る</h2>
+<ol>
+    <li>右パネル「リアルタイムグラフ」の <b>おすすめ: [落下・投げ上げ]</b> を押す
+        → y–t と vy–t のグラフが出る。</li>
+    <li><b>y–t グラフ</b>: 曲線（放物線）になっているか確認。まっすぐなら等速＝何かおかしい。</li>
+    <li><b>vy–t グラフ</b>をタップして<b>拡大</b>する。点がほぼ一直線に並ぶはず。</li>
+    <li>グラフ上を<b>横にドラッグ</b>して、点がきれいに並んでいる範囲を選ぶ
+        → 上に「<b>傾き −◯◯◯ cm/s² ＝ 平均加速度</b>」と表示される。</li>
+    <li>単位を直す: <b>980 cm/s² = 9.8 m/s²</b>。自分の値を m/s² に直して記録する。</li>
+</ol>
+<div class="card tip">
+    <div class="card-title">考えてみよう</div>
+    <p>① vy–t の傾きがマイナスなのはなぜ？（y軸の向きと関係づけて説明してみよう）<br>
+    ② 自分の班の g は 9.8 より大きい？小さい？その理由は？（→ コラム参照）</p>
+</div>
+
+<h2><span class="stepno">手順 7</span>記録して提出する</h2>
+<ul>
+    <li><b>[ストロボ]</b> → 「写真（残像）」でストロボ写真を作り、PNG保存。
+        教科書に出てくるストロボ写真が自分の実験で再現できる。
+        「点マーカー」に切り替えると、読み取った点だけの散布図風にもできる。</li>
+    <li><b>[保存]</b> → 「TSVをコピー」でスプレッドシートに貼り付け、
+        または xlsx 保存。t・y・vy などの列がそのまま出てくる。</li>
+    <li>レポートには「求めた g の値・9.8 との差・差の原因の考察」を書く。</li>
+</ul>
+
+<h2>うまくいかないとき</h2>
+<table>
+    <tr><th>症状</th><th>原因と対処</th></tr>
+    <tr><td>g が数十分の一（0.1〜0.6 m/s² など）</td>
+        <td>スローで撮っている。ふつうのビデオで撮り直すのが確実
+            （どうしてもその動画を使うなら、先生に「スロー設定」の使い方を聞く）。</td></tr>
+    <tr><td>g が数％ずれる</td>
+        <td>ものさしが落下面とずれている／十字がボールの中心からずれている。
+            スケール設定をやり直す・拡大して点を打ち直す。</td></tr>
+    <tr><td>vy–t がガタガタ</td>
+        <td>ボールがブレて中心が決めにくい証拠。明るい場所で撮り直すと改善。
+            グラフ拡大で「きれいな範囲だけ」選んで傾きを読むのも手。</td></tr>
+    <tr><td>y–t が直線になる</td>
+        <td>等速の何かを追っている（例: 手を離す前を含めている）。
+            イン点・アウト点を設定し直す。</td></tr>
+    <tr><td>動画が読み込めない</td>
+        <td>まず「サンプルで試す」でアプリ自体が動くか確認。動くなら動画形式の問題なので撮り直す。</td></tr>
+</table>
+
+<h2>コラム: なぜテニスボール？（落とすものの物理）</h2>
+<p>落とすものは何でもいいわけではない。<b>空気抵抗</b>が効くと、測る g は本当の値より小さく出る。
+空気抵抗の効きにくさは「重くて、そこそこ小さい」＝密度が高いほど有利。
+2 m 落下でどれくらい g が小さく出るかの目安:</p>
+<table>
+    <tr><th>落とすもの</th><th>g のずれの目安</th><th>コメント</th></tr>
+    <tr><td>テニスボール</td><td class="num">−2〜3 %（9.5〜9.7）</td><td>安全・見やすい・十分正確。今日はこれ</td></tr>
+    <tr><td>硬式野球ボール・ソフトボール</td><td class="num">−1 %（9.7）</td><td>より正確。落下地点に注意</td></tr>
+    <tr><td>バスケットボール</td><td class="num">−3 %（9.5）</td><td>大きくて画面で見やすい</td></tr>
+    <tr><td>ピンポン球</td><td class="num">−20 %以上（8 前後）</td><td>軽すぎて空気抵抗が丸見え</td></tr>
+    <tr><td>風船・紙・羽根</td><td class="num">論外</td><td>空気抵抗の実験ならむしろ最適</td></tr>
+</table>
+<p>「同じ手順でピンポン球を落とすと g がどうなるか」— 時間が余った班は試してみよう。
+<b>測定がずれる原因（空気抵抗）を、測定で確かめられる</b>のがこの方法の面白いところ。</p>
+
+<h2>発展課題</h2>
+<ul>
+    <li><b>鉛直投げ上げ</b>: ボールを真上に軽く投げて撮影。上がるときも下がるときも
+        vy–t の傾きは同じ？ 最高点では何が 0 になる？</li>
+    <li><b>水平投射・斜方投射</b>: 横向きで撮影し、グラフの
+        おすすめ [投射（放物線）] で y–x（軌道）・vx–t・vy–t を見る。
+        vx–t と vy–t の違いは何を意味している？</li>
+    <li><b>ピンポン球の落下</b>: g がどれだけ小さく出るか。落とす高さを変えると差はどうなる？</li>
+</ul>
+
+<footer class="doc-footer">
+    自由落下の動画解析・実験手順書 ／ 動画は端末内で処理され、外部に送信されません。
+</footer>
+
+</div>
+</body>
+</html>
