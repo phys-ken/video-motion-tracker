@@ -437,9 +437,9 @@ function showSampleDialog() {
     });
 }
 
-// テスト用バックドア（従来どおり sample.mp4 を直接読む。テストが直接呼ぶ）
+// テスト用バックドア（テストハーネスが直接呼ぶ。UI からは使わない）
 function loadSampleVideo() {
-    loadSampleByUrl('sample.mp4', 'sample.mp4');
+    loadSampleByUrl('tests/fixtures/sample.mp4', 'sample.mp4');
 }
 
 function loadSampleByUrl(url, displayName) {

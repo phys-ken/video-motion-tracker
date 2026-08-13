@@ -1,68 +1,95 @@
-# 動画解析トラッカー (tracker_for_ipad)
+# 動画解析トラッカー (Video Motion Tracker)
 
-動画から物体の運動（位置・速度・加速度）を測定する、**iPad / スマホのブラウザで動く**運動解析ツール。
-物理の授業で、生徒一人ひとりが自分の端末で操作することを想定しています。
+動画から物体の運動（位置・速度・加速度）を測る、**ブラウザだけで動く**運動解析ツールです。
+高校物理の授業で、生徒一人ひとりが自分の端末（iPad / スマートフォン / PC）で使うことを想定しています。
 
-- 中央十字＋「確定」方式で、指で隠れずに正確に点を打てる（モード切替なし・確定で自動コマ送り）
-- 読込直後にコマ数・実FPSをダイアログで提示し、その場で前後の不要コマをカット（正しい時刻 t を保証）
-- コマ送りは「プッシュ」遷移＋パラパラ表示で、真っ黒な映像でも進んだことが必ず見える。
-  ジョグボタンは長押しで連続送り、映像右上に「現在コマ / 総コマ数」を常設表示
-- **打点マップ**: どのコマに座標が決まったかをチップ一覧で表示。タップでそのコマへジャンプ
-- 位置に加え速度・加速度グラフ。**グラフをタップで拡大し、範囲をドラッグ選択すると
-  その範囲の回帰直線の傾き（v-tなら平均加速度＝重力加速度の測定）を表示**
-- TSVコピー＋xlsxダウンロード、ストロボ写真PNG（残像合成／点マーカーの2モード）、
-  Undo（何が消えたかを表示）＋自動保存
-- 打点はマゼンタ系の高視認色（実写映像とかぶらない・色覚多様性対応のパレット）
-- 白ベースの明るいUI（教室の昼間・プロジェクタ投影を想定）。iPad横向き推奨、スマホ縦でも利用可
-- スロー動画の時間補正、長い動画を誤って読み込んでもクラッシュしない設計
+**インストール不要・アカウント不要・ビルド不要。動画は端末内で処理され、どこにも送信されません。**
+
+- **アプリ**: <https://phys-ken.github.io/tracker-for-ipad/>
+- **実験手順書（生徒向け）**: <https://phys-ken.github.io/tracker-for-ipad/guide/>
+  — 自由落下 / 鉛直投げ上げ / 水平投射 / 斜方投射
+
+## できること
+
+- **中央十字＋「確定」方式の点打ち** — 指で対象を隠さず正確に打てます。確定で自動コマ送り。
+- **正確な時刻 t** — 動画コンテナから各コマの実時刻を読み取るため、可変フレームレートや
+  複製フレームがあってもずれません。スロー撮影の補正にも対応。
+- **迷わないコマ送り** — 送るとページがめくれるアニメーション、コマカウンタ常設、
+  ±10のパラパラ表示、長押しで連続送り。
+- **打点マップ** — どのコマに座標が決まったかを一覧表示。タップでそのコマへ移動でき、
+  打ち漏らしをすぐ直せます。
+- **グラフ** — 位置・速度・加速度。運動の種類に応じたプリセット付き。
+  **拡大して範囲をドラッグ選択すると、その区間の回帰直線の傾き**（v–t なら平均加速度、
+  つまり重力加速度の測定値）が読めます。
+- **出力** — TSVコピー / TSV / xlsx、**ストロボ写真PNG**（残像合成・点マーカーの2種）。
+- **教室向けの作り** — 白ベースの明るい画面、外部CDNへの接続なし、色覚多様性に配慮した配色。
 
 ## 使い方
-- 生徒: 公開ページ **<https://phys-ken.github.io/tracker-for-ipad/>** を開くだけ
-  （インストール不要、動画は端末内で処理されサーバーには送信されません）。
-- 授業用の**実験手順書サイト**（自由落下・鉛直投げ上げ・水平投射・斜方投射）:
-  **<https://phys-ken.github.io/tracker-for-ipad/guide/>**（アプリからはリンクしていません。
-  配布はこのURLを直接どうぞ。印刷にも対応しています）。
-- ローカル: `python serve.py` → `http://localhost:8000`。
 
-詳しい操作は **[MANUAL.md](MANUAL.md)** を参照。
-設計方針・ビジュアルの考え方は **[DESIGN.md](DESIGN.md)** にまとめています。
+- **生徒**: 上のURLをブラウザで開くだけです。
+- **先生**: 授業で配る場合は、アプリのURLと必要な回の手順書URLを渡してください
+  （手順書はアプリからはリンクしていないので、使う回だけ配れます。印刷にも対応）。
+- **ローカルで動かす**:
 
-## 構成
-| ファイル | 役割 |
+  ```bash
+  python3 serve.py     # → http://localhost:8000
+  ```
+
+  同一LANの iPad からは `http://<PCのIPアドレス>:8000` で開けます。
+
+詳しい操作は **[MANUAL.md](MANUAL.md)**、設計の考え方は **[DESIGN.md](DESIGN.md)** にあります。
+
+## リポジトリ構成
+
+| パス | 役割 |
 |---|---|
-| `index.html` | 画面構造 |
-| `app.js` | 解析ロジック（トラッキング/校正/FPS実測/グラフ/出力） |
-| `styles.css` | 白ベースのビジュアル（教室昼間・色覚多様性対応パレット） |
+| `index.html` / `app.js` / `styles.css` | アプリ本体（この3つで完結。フレームワーク不使用） |
 | `guide/` | 生徒向け実験手順書サイト（4種の落体運動・相互ナビ付き） |
-| `samples/` + `tools/gen_samples.py` | 真値既知の合成サンプル動画とジェネレータ |
-| `serve.py` | ローカル開発サーバ（:8000, LAN公開, キャッシュ無効） |
-| `test_logic.js` / `tests/` / `test.html` | テスト（node ロジック / 実Chrome E2E・精度 / ブラウザ内ハーネス） |
+| `samples/` | 真値が既知の合成サンプル動画（`tools/gen_samples.py` で再生成可能） |
+| `tools/` | サンプル動画のジェネレータ |
+| `serve.py` | ローカル開発サーバ（キャッシュ無効・LAN公開） |
+| `test_logic.js` / `tests/` / `test.html` | テスト一式 |
+| `vendor/` | 同梱ライブラリ（[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)） |
 
 ## テスト
-依存パッケージはありません。
 
-- `npm test` … node によるロジック単体テスト
-- `node tests/e2e.test.js` … 既存 Chrome を DevTools Protocol で駆動する E2E（動画を実デコードして検証）
-- `test.html` … `python serve.py` 後にブラウザ（iPad/Safari 可）で開いて目視
+追加インストールは不要です（Node 標準機能と、インストール済みの Chrome のみを使います）。
+
+```bash
+npm test              # ロジック単体テスト（数値微分・時刻表・スロー補正 ほか）
+npm run test:e2e      # 実Chromeを DevTools Protocol で駆動するE2E（動画を実デコード）
+npm run test:precision # 真値既知の動画から g を測り 9.8±5% と v-t の直線性を検証
+npm run test:all      # 上記すべて
+```
+
+`test.html` は `python3 serve.py` 後にブラウザ（iPad/Safari 可）で開く目視用ハーネスです。
+
+## 依存関係
+
+npm パッケージへの依存はありません。実行時に必要なライブラリは `vendor/` に同梱し、
+**外部CDNには一切接続しません**（学校のネットワークフィルタ下でも動くようにするため）。
+
+| ライブラリ | 用途 | ライセンス |
+|---|---|---|
+| [SheetJS](https://sheetjs.com/) (`xlsx`) | xlsx 書き出し | Apache-2.0 |
+| [MP4Box.js](https://github.com/gpac/mp4box.js) | 動画コンテナ解析（各コマの実時刻取得） | BSD-3-Clause |
+| [Material Icons](https://github.com/google/material-design-icons) | UIアイコン | Apache-2.0 |
+
+詳細は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。
+本文の書体は端末内蔵のものを使うため、Webフォントの読み込みもありません。
 
 ## ライセンス
-本リポジトリのコード（`index.html` / `app.js` / `styles.css` / `serve.py` / テスト類）は
-**Creative Commons 表示-非営利 4.0 国際（CC BY-NC 4.0）** で公開します。© 2026 phys-ken。
-全文は [LICENSE](LICENSE) を参照。商用利用を希望される場合は作者へご連絡ください。
 
-同梱している外部ライブラリ（CDN 依存はありません。学校のMDMフィルタ下でも動作します）:
-- Material Icons — Apache License 2.0
-- SheetJS (xlsx) — Apache License 2.0
-- mp4box.js — BSD-3-Clause（GPAC）
+本リポジトリのコードとドキュメントは **MIT License** です（[LICENSE](LICENSE)）。
+© 2026 phys-ken。授業でも改変版の配布でも自由にお使いください。
+`vendor/` の同梱ライブラリは各原作者のライセンスに従います。
 
-本文フォントは端末ネイティブ書体（ヒラギノ角ゴ等）を使用します。
+## クレジット
 
-## クレジット / 謝辞
-本アプリは独立実装ですが、設計・概念の面で次の優れた先行ソフトウェアから着想を得ました。
-**コードの流用はありません。** これらのリファレンス・ファイルは本リポジトリには含めていません。
+本アプリは独立実装ですが、設計・概念の面で次の先行ソフトウェアから着想を得ました
+（**コードの流用はありません**）。
 
 - **IPhO2023 記念協会「Physics Exam Lab — 動画解析アプリ」**（作: ODA Tomohiro）
-  © 2025 一般社団法人 国際物理オリンピック2023記念協会 — CC BY-NC 4.0
-  <https://apps.ipho2023-commemorative-association.jp/動画解析アプリ>
+  <https://apps.ipho2023-commemorative-association.jp/>
 - **Open Source Physics「Tracker」/「Tracker Online」**（作: Douglas Brown, OSP / AAPT-ComPADRE）
-  GNU General Public License — <https://opensourcephysics.github.io/tracker-website/>
+  <https://opensourcephysics.github.io/tracker-website/>

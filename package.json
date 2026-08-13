@@ -1,9 +1,24 @@
 {
-  "name": "tracker_for_ipad",
-  "version": "1.0.0",
+  "name": "video-motion-tracker",
+  "version": "1.1.0",
   "private": true,
-  "description": "動画解析トラッカー（iPad向け）。テストは依存ゼロ：node 標準機能と既存 Chrome のみで動く。",
+  "description": "動画から物体の運動（位置・速度・加速度）を測る、ブラウザだけで動く高校物理向けの解析ツール。ビルド不要・依存パッケージなし。",
+  "keywords": [
+    "physics",
+    "education",
+    "video-analysis",
+    "motion-tracking",
+    "kinematics"
+  ],
+  "license": "MIT",
+  "author": "phys-ken",
+  "homepage": "https://phys-ken.github.io/tracker-for-ipad/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phys-ken/tracker-for-ipad.git"
+  },
   "scripts": {
+    "start": "python3 serve.py",
     "test": "node test_logic.js",
     "test:e2e": "node tests/e2e.test.js",
     "test:precision": "node tests/precision.test.js",
