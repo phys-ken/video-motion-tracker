@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-08-13c';
+const APP_VERSION = '2026-08-13d';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -100,14 +100,69 @@ let isDraggingPoint = false;
 let draggedPointIndex = -1;
 
 // デバッグ用ログ出力
+// ログは全文コピーできるようメモリにも保持する（バグ報告用）。上限つき。
+const debugLines = [];
+const DEBUG_MAX_LINES = 500;
+
 function logDebug(message) {
+    // 時刻＋起動からの経過秒。報告を見ながら「操作のどのタイミングか」を追える
+    const elapsed = (performance.now() / 1000).toFixed(1);
+    const line = `[${new Date().toLocaleTimeString()} +${elapsed}s] ${message}`;
+    debugLines.push(line);
+    if (debugLines.length > DEBUG_MAX_LINES) debugLines.shift();
+
+    console.log(message);
     const logList = document.getElementById('debug-log-list');
     if (!logList) return;
     const item = document.createElement('div');
-    item.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+    item.textContent = line;
     logList.appendChild(item);
+    while (logList.childElementCount > DEBUG_MAX_LINES) logList.removeChild(logList.firstChild);
     logList.scrollTop = logList.scrollHeight;
-    console.log(message);
+}
+
+// バグ報告用: バージョン・環境・現在の状態サマリ＋全ログを1テキストにまとめる
+function buildDebugReport() {
+    const s = appState;
+    const state = [
+        `=== 動画解析トラッカー デバッグレポート ===`,
+        `version: v${APP_VERSION}`,
+        `userAgent: ${navigator.userAgent}`,
+        `画面: ${window.innerWidth}x${window.innerHeight}`,
+        `動画: ${s.videoName || '(未読込)'} / ${s.videoDuration ? s.videoDuration.toFixed(2) + 's' : '--'}`
+            + ` / fps=${s.videoFps}${s.fpsMeasured ? '' : '*'} / 時刻表=${s.frameTimes.length}件`,
+        `コマ: ${s.currentFrame} / ${s.totalFrames}（範囲 ${s.rangeIn}–${s.rangeOut}）`,
+        `打点: ${s.trackingData.length}点 / 物体${s.activeObjectId} / ステップ幅${s.trackingStepSize}`,
+        `校正: 原点=${s.calibration.origin ? '設定済' : '未'} / スケール=${s.calibration.scaleRatio ? s.calibration.scaleRatio.toFixed(4) + 'cm/px' : '未'}`
+            + ` / スロー=${s.slowMotionCaptureFps ? s.slowMotionCaptureFps + 'fps' : 'なし'}`,
+        `内部: seekBusy=${seekBusy} pending=${seekPendingFrame} flipTarget=${flipTarget}`
+            + ` readyState=${s.videoElement ? s.videoElement.readyState : '-'}`,
+        `=== ログ (${debugLines.length}件) ===`
+    ];
+    return state.concat(debugLines).join('\n');
+}
+
+async function copyDebugReport() {
+    const text = buildDebugReport();
+    let ok = false;
+    try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+    } catch (e) {
+        // クリップボードAPIが使えない環境向けのフォールバック
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch (e2) { ok = false; }
+    }
+    logDebug(ok ? 'デバッグレポートをコピーしました（そのまま貼り付けて報告できます）'
+                : 'コピーに失敗しました。ログを長押しで選択してコピーしてください。');
 }
 
 // --- Undo 履歴 ＆ 自動保存 -------------------------------------------------
@@ -131,6 +186,7 @@ function pushHistory() {
 function undo() {
     const snap = undoStack.pop();
     if (!snap) return;
+    cancelDeferredConfirm(); // 保留中の確定が取消直後に発火して混乱させない
     try {
         const before = appState.trackingData;
         const obj = JSON.parse(snap);
@@ -434,10 +490,14 @@ function setupDebugConsole() {
     
     if (btnClear) {
         btnClear.addEventListener('click', () => {
+            debugLines.length = 0;
             const logList = document.getElementById('debug-log-list');
             if (logList) logList.innerHTML = '';
         });
     }
+
+    const btnCopy = document.getElementById('btn-copy-debug');
+    if (btnCopy) btnCopy.addEventListener('click', copyDebugReport);
 }
 
 // --- 動画のアップロード・ロード ---
@@ -1125,6 +1185,7 @@ function setupPlaybackControls() {
     
     if (slider) {
         slider.addEventListener('input', (e) => {
+            cancelDeferredConfirm();
             const targetFrame = parseInt(e.target.value);
             // 解析範囲内にクランプ（範囲外へはドラッグで出られない）
             seekToFrame(Math.max(appState.rangeIn, Math.min(appState.rangeOut, targetFrame)));
@@ -1182,7 +1243,8 @@ function runPushTransition(snapOld, snapNew, dir, durMs) {
         const ctx = appState.ctx;
         const W = appState.canvas ? appState.canvas.width : 0;
         const H = appState.canvas ? appState.canvas.height : 0;
-        if (!ctx || !snapOld || !snapNew || !W || prefersReducedMotion) { resolve(); return; }
+        // 別のアニメが走行中なら二重再生しない（rAFループ同士が喧嘩してチラつく）
+        if (!ctx || !snapOld || !snapNew || !W || prefersReducedMotion || pushAnimating) { resolve(); return; }
         pushAnimating = true;
         const t0 = performance.now();
         const tick = () => {
@@ -1205,14 +1267,19 @@ function runPushTransition(snapOld, snapNew, dir, durMs) {
 
 // シークしてからプッシュ遷移で見せる（コマ送りボタン用）
 async function seekWithPush(target, durMs) {
-    const dir = target >= appState.currentFrame ? 1 : -1;
+    const from = appState.currentFrame;
+    const dir = target >= from ? 1 : -1;
     const snapOld = (!prefersReducedMotion && !pushAnimating) ? snapshotCanvas() : null;
     seekToFrame(target);
     await whenSeekIdle();
-    if (snapOld) {
+    // 実際にコマが変わった時だけアニメーションする（シーク補正等で元のコマに
+    // 留まった場合に「アニメは出るのに同じコマ」という偽の動きを見せない）
+    if (snapOld && appState.currentFrame !== from) {
         updateOffscreenCanvas();
         drawVideoFrame();
         await runPushTransition(snapOld, snapshotCanvas(), dir, durMs);
+    } else if (snapOld) {
+        drawVideoFrame();
     }
 }
 
@@ -1241,8 +1308,11 @@ function attachJogButton(btn, delta) {
     btn.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-function stepFrame(delta) {
+function stepFrame(delta, isAutoAdvance) {
     if (!appState.videoElement.src) return;
+    // ユーザーの明示的なコマ移動は、保留中の確定（連打の残り）を破棄する。
+    // 確定後の自動コマ送り(isAutoAdvance)では破棄しない（2連タップの2打目を守る）
+    if (!isAutoAdvance) cancelDeferredConfirm();
     pauseVideo();
     // 実行中のパラパラ送りがあれば、その目的地を基準に「押した分だけ」延長する
     const base = (flipTarget !== null) ? flipTarget : appState.currentFrame;
@@ -1273,8 +1343,13 @@ async function runFlipTo(target) {
     flipTarget = target;
     const startFrame = appState.currentFrame;
     const deadline = performance.now() + FLIP_BUDGET_MS;
+    // 暴走ブレーキ: シーク補正などで進行しなくなったら打ち切る（flipTargetが
+    // 残留すると、以後の±1入力が「目標の書き換え」だけになり無反応に見える）
+    const maxIters = Math.abs(target - startFrame) * 3 + 20;
+    let iters = 0, stagnant = 0, lastFrame = appState.currentFrame;
     try {
         while (flipTarget !== null && appState.currentFrame !== flipTarget) {
+            if (++iters > maxIters) { logDebug('パラパラ送りを打ち切り（回数上限）'); break; }
             const frameStart = performance.now();
             const dir = flipTarget > appState.currentFrame ? 1 : -1;
             // 時間予算を使い切ったら残りは直行（遅い端末でも待たせない）
@@ -1282,6 +1357,12 @@ async function runFlipTo(target) {
                                                         : appState.currentFrame + dir;
             // 1コマごとに短いプッシュ遷移（背景が真っ黒でもめくれが見える）
             await seekWithPush(next, PUSH_MS_FLIP);
+            if (appState.currentFrame === lastFrame) {
+                if (++stagnant >= 2) { logDebug('パラパラ送りを打ち切り（コマが進まない）'); break; }
+            } else {
+                stagnant = 0;
+                lastFrame = appState.currentFrame;
+            }
             const moved = appState.currentFrame - startFrame;
             showStepBadge(`${moved > 0 ? '+' : ''}${moved}`, true);
             pulseFrameLabel();
@@ -1550,14 +1631,21 @@ function pumpSeekQueue() {
     const finish = (mediaTime) => {
         if (done) return;
         done = true;
-        // 後続の要求が無ければ、実際に表示されたフレームを真実として補正
+        // 後続の要求が無ければ、実際に表示されたフレームを真実として補正。
+        // ただし要求コマから大きく（3コマ以上）離れた mediaTime は、非表示video
+        // の遅発rVFCが返す「古い提示」の可能性が高く、信じると大ジャンプや
+        // 押し戻しが起きる。近傍(±2コマ)の食い違いだけを実測として採用する。
         if (mediaTime !== null && seekPendingFrame === null && appState.frameTimes.length) {
             const shown = frameIndexOfTime(mediaTime);
             if (shown !== appState.currentFrame) {
-                logDebug(`シーク補正: 要求コマ${appState.currentFrame} → 表示コマ${shown}`);
-                appState.currentFrame = shown;
-                const slider = document.getElementById('frame-slider');
-                if (slider) slider.value = shown;
+                if (Math.abs(shown - appState.currentFrame) <= 2) {
+                    logDebug(`シーク補正: 要求コマ${appState.currentFrame} → 表示コマ${shown}`);
+                    appState.currentFrame = shown;
+                    const slider = document.getElementById('frame-slider');
+                    if (slider) slider.value = shown;
+                } else {
+                    logDebug(`シーク補正を棄却: 要求コマ${appState.currentFrame} に対し表示コマ${shown}（乖離が大きく古い提示の疑い）`);
+                }
             }
         }
         seekBusy = false;
@@ -1572,14 +1660,28 @@ function pumpSeekQueue() {
         return;
     }
 
-    if (rvfcSupported && !appState.isScanning) {
-        v.requestVideoFrameCallback((now, meta) => finish(meta.mediaTime));
-    } else {
-        const onSeeked = () => { v.removeEventListener('seeked', onSeeked); finish(null); };
-        v.addEventListener('seeked', onSeeked);
+    // rVFC と seeked の両方を張り、先に来た方で完了する。
+    // 非表示videoのrVFCはスマホで発火しないことがあり、rVFC頼みだと全シークが
+    // 安全網の1.5秒待ちになって「押しても動かない→たまに一気に飛ぶ」が起きる。
+    // seeked が先に来たら、実測(mediaTime)を80msだけ待ってから補正なしで完了する。
+    let seekedHandler = null;
+    const finishAndCleanup = (mediaTime) => {
+        if (seekedHandler) { v.removeEventListener('seeked', seekedHandler); seekedHandler = null; }
+        finish(mediaTime);
+    };
+    const useRvfc = rvfcSupported && !appState.isScanning;
+    if (useRvfc) {
+        v.requestVideoFrameCallback((now, meta) => finishAndCleanup(meta.mediaTime));
     }
+    seekedHandler = () => {
+        v.removeEventListener('seeked', seekedHandler);
+        seekedHandler = null;
+        if (useRvfc) setTimeout(() => finishAndCleanup(null), 80);
+        else finishAndCleanup(null);
+    };
+    v.addEventListener('seeked', seekedHandler);
     v.currentTime = targetTime;
-    setTimeout(() => finish(null), 1500); // rVFCが発火しない端末・状況の安全網
+    setTimeout(() => finishAndCleanup(null), 1500); // どちらも来ない場合の安全網
 }
 
 // 再生時刻 t(s) → コマ番号（実時刻表を二分探索。表が無ければfps換算）
@@ -2070,6 +2172,13 @@ function getCrosshairVideoCoord() {
 }
 
 // --- 「確定」ボタン: 十字位置を現在の保留アクションに応じて確定する ---
+// 保留できる確定は1件だけ。誤連打した確定が延々とキューに残って
+// 自動コマ送りし続けると、その後の「戻る」操作と喧嘩して操作不能に見える。
+// また、保留中にユーザーが手動でコマ移動したら保留確定は破棄する（意図が変わったため）。
+let confirmDeferred = false;
+let navGeneration = 0;
+function cancelDeferredConfirm() { navGeneration++; }
+
 function confirmAtCrosshair() {
     const v = appState.videoElement;
     if (!v.src) {
@@ -2077,9 +2186,17 @@ function confirmAtCrosshair() {
         return;
     }
     // シーク直後は readyState が一時的に 2 未満へ落ちる。ここで黙って捨てると
-    // 連打時・遅い端末でタップが飲み込まれるので、シーク完了を待って実行する。
+    // 連打時・遅い端末でタップが飲み込まれるので、1件だけシーク完了を待って実行する。
     if (v.readyState < 2 || seekBusy || seekPendingFrame !== null) {
+        if (confirmDeferred) {
+            showStepBadge('処理中…'); // 2件目以降の連打は捨てる（暴走防止）
+            return;
+        }
+        confirmDeferred = true;
+        const gen = navGeneration;
         whenSeekIdle().then(() => setTimeout(() => {
+            confirmDeferred = false;
+            if (gen !== navGeneration) return; // 保留中に手動でコマ移動した → 破棄
             if (v.readyState >= 2) confirmAtCrosshair();
             else logDebug('動画データの準備待ちで確定できませんでした。もう一度押してください。');
         }, 30));
@@ -2138,7 +2255,7 @@ function captureTrackPoint(vPos) {
     updateGraph();
 
     // 新規点は従来通り自動コマ送り。既存点の上書き(修正作業)はその場に留まり結果を確認できる。
-    if (existingIndex < 0) stepFrame(appState.trackingStepSize);
+    if (existingIndex < 0) stepFrame(appState.trackingStepSize, true);
 }
 
 function captureOrigin(vPos) {
@@ -2576,6 +2693,7 @@ function updateDataTable() {
         
         tr.addEventListener('click', (e) => {
             if (e.target.tagName !== 'BUTTON') {
+                cancelDeferredConfirm();
                 setSelectedPoint(p.id);
                 seekToFrame(p.frame);
                 drawVideoFrame();
@@ -2655,7 +2773,7 @@ function setupHitMap() {
     if (!map) return;
     map.addEventListener('click', (e) => {
         const chip = e.target.closest('.hit-chip');
-        if (chip) seekToFrame(parseInt(chip.dataset.frame));
+        if (chip) { cancelDeferredConfirm(); seekToFrame(parseInt(chip.dataset.frame)); }
     });
     updateHitMap();
 }
@@ -2846,6 +2964,7 @@ function attachGraphClick(cv) {
             if (d < bestDist) { bestDist = d; best = p; }
         });
         if (best) {
+            cancelDeferredConfirm();
             setSelectedPoint(best.id);
             seekToFrame(best.frame);
             drawVideoFrame();
@@ -3631,6 +3750,7 @@ window.seekToFrame = seekToFrame;
 window.stepFrame = stepFrame;
 window.setPendingCapture = setPendingCapture;
 window.confirmAtCrosshair = confirmAtCrosshair;
+window.buildDebugReport = buildDebugReport;
 window.getCrosshairVideoCoord = getCrosshairVideoCoord;
 window.resetZoom = resetZoom;
 window.updateGraph = updateGraph;

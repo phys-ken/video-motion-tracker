@@ -85,7 +85,7 @@ const connectWS = (u) => new Promise((res, rej) => { const w = new WebSocket(u);
                 const cv=document.createElement('canvas'); cv.width=540; cv.height=960; const cx=cv.getContext('2d',{willReadFrequently:true});
                 const seek=(n)=>new Promise(r=>{let d=false;const h=()=>{if(d)return;d=true;v.removeEventListener('seeked',h);r();};v.addEventListener('seeked',h);window.seekToFrame(n);setTimeout(()=>{if(!d){d=true;v.removeEventListener('seeked',h);r();}},2000);});
                 s.trackingData=[]; s.activeObjectId=1;
-                for(let n=0;n<=N;n++){ await seek(n); await new Promise(r=>setTimeout(r,20));
+                for(let n=0;n<=N;n++){ await seek(n); await new Promise(r=>setTimeout(r,40)); // seeked後の描画整定待ち(マシン負荷時のフレーム取り違え対策)
                     cx.drawImage(v,0,0,540,960); const d=cx.getImageData(0,0,540,960).data; let sx=0,sy=0,c=0;
                     for(let i=0;i<d.length;i+=4){ if(d[i]>140&&d[i+1]>140&&d[i+2]<110){ sx+=(i/4)%540; sy+=Math.floor((i/4)/540); c++; } }
                     if(c>0){ s.trackingData.push({id:1000+n, frame:n, time:window.frameTimeOf(n), x:sx/c, y:sy/c, objectId:1}); }

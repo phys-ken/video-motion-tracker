@@ -1010,6 +1010,18 @@ details.panel-collapsible[open] > summary h2::after { transform: rotate(180deg);
 }
 
 .btn-clear { background: transparent; border: none; color: var(--danger); cursor: pointer; font-size: 0.72rem; }
+.btn-copy-debug {
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--accent-strong);
+    cursor: pointer;
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    margin-right: 8px;
+    touch-action: manipulation;
+}
+.btn-copy-debug:hover { background: var(--accent-soft); border-color: var(--accent); }
 
 .debug-log-list {
     flex: 1;

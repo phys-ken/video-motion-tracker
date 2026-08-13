@@ -309,7 +309,10 @@
             <div class="debug-console" id="debug-console" style="display: none;">
                 <div class="debug-header">
                     <span>Console Output <span id="app-version-label" style="opacity:.6;font-weight:normal;"></span></span>
-                    <button class="btn-clear" id="btn-clear-debug">Clear</button>
+                    <span>
+                        <button class="btn-copy-debug" id="btn-copy-debug" title="バージョン・状態・全ログをまとめてコピー（バグ報告用）">レポートをコピー</button>
+                        <button class="btn-clear" id="btn-clear-debug">Clear</button>
+                    </span>
                 </div>
                 <div class="debug-log-list" id="debug-log-list"></div>
             </div>
@@ -337,6 +340,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-08-13c"></script>
+    <script src="app.js?v=2026-08-13d"></script>
 </body>
 </html>
