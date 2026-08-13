@@ -1,3 +1,5 @@
+<img src="assets/icon-512.png" width="84" align="right" alt="">
+
 # 動画解析トラッカー (Video Motion Tracker)
 
 動画から物体の運動（位置・速度・加速度）を測る、**ブラウザだけで動く**運動解析ツールです。
@@ -5,9 +7,21 @@
 
 **インストール不要・アカウント不要・ビルド不要。動画は端末内で処理され、どこにも送信されません。**
 
-- **アプリ**: <https://phys-ken.github.io/tracker-for-ipad/>
-- **実験手順書（生徒向け）**: <https://phys-ken.github.io/tracker-for-ipad/guide/>
+- **アプリ**: <https://phys-ken.github.io/video-motion-tracker/>
+- **実験手順書（生徒向け）**: <https://phys-ken.github.io/video-motion-tracker/guide/>
   — 自由落下 / 鉛直投げ上げ / 水平投射 / 斜方投射
+
+## 授業で配る（QRコード）
+
+黒板に投影するか、プリントに貼って配ってください。生徒は読み取るだけで始められます。
+
+| アプリ本体 | 手順書: 自由落下 | 手順書: 鉛直投げ上げ | 手順書: 水平投射 | 手順書: 斜方投射 |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/qr/app.png" width="120" alt="アプリのQRコード"> | <img src="docs/qr/guide-free-fall.png" width="120" alt="自由落下の手順書のQRコード"> | <img src="docs/qr/guide-vertical-throw.png" width="120" alt="鉛直投げ上げの手順書のQRコード"> | <img src="docs/qr/guide-projectile.png" width="120" alt="水平投射の手順書のQRコード"> | <img src="docs/qr/guide-oblique.png" width="120" alt="斜方投射の手順書のQRコード"> |
+| [開く](https://phys-ken.github.io/video-motion-tracker/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/vertical_throw.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/projectile.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/oblique.html) |
+
+誤り訂正レベル H（30%）で作ってあるので、印刷が多少かすれても読み取れます。
+URL を変えたときは `tools/gen_assets.py` で再生成してください。
 
 ## できること
 
@@ -46,7 +60,9 @@
 | `index.html` / `app.js` / `styles.css` | アプリ本体（この3つで完結。フレームワーク不使用） |
 | `guide/` | 生徒向け実験手順書サイト（4種の落体運動・相互ナビ付き） |
 | `samples/` | 真値が既知の合成サンプル動画（`tools/gen_samples.py` で再生成可能） |
-| `tools/` | サンプル動画のジェネレータ |
+| `assets/` | アプリのアイコン（`tools/gen_assets.py` で生成） |
+| `docs/qr/` | 配布用QRコード（同上） |
+| `tools/` | サンプル動画・アイコン・QRのジェネレータ |
 | `serve.py` | ローカル開発サーバ（キャッシュ無効・LAN公開） |
 | `test_logic.js` / `tests/` / `test.html` | テスト一式 |
 | `vendor/` | 同梱ライブラリ（[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)） |

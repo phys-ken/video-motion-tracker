@@ -12,10 +12,10 @@
   ],
   "license": "MIT",
   "author": "phys-ken",
-  "homepage": "https://phys-ken.github.io/tracker-for-ipad/",
+  "homepage": "https://phys-ken.github.io/video-motion-tracker/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/phys-ken/tracker-for-ipad.git"
+    "url": "https://github.com/phys-ken/video-motion-tracker.git"
   },
   "scripts": {
     "start": "python3 serve.py",
