@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-08-13a';
+const APP_VERSION = '2026-08-13b';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -130,6 +130,7 @@ function undo() {
     const snap = undoStack.pop();
     if (!snap) return;
     try {
+        const before = appState.trackingData;
         const obj = JSON.parse(snap);
         appState.trackingData = obj.trackingData || [];
         appState.calibration = obj.calibration || appState.calibration;
@@ -139,9 +140,33 @@ function undo() {
         updateDataTable();
         drawVideoFrame();
         updateGraph();
-        logDebug('元に戻しました');
+        // 何が取り消されたかを言葉で返し、そのコマへ移動して見せる
+        const desc = describeUndo(before, appState.trackingData);
+        if (desc) {
+            showStepBadge(desc.text);
+            if (desc.frame !== null) seekToFrame(desc.frame);
+        } else {
+            showStepBadge('取り消しました');
+        }
+        logDebug('元に戻しました' + (desc ? `: ${desc.text}` : ''));
     } catch (e) { logDebug('Undo失敗'); }
     updateUndoButton();
+}
+
+// Undo前後の点データを比べて「何が起きたか」を短文にする
+function describeUndo(before, after) {
+    const key = (p) => `${p.objectId}:${p.frame}`;
+    const mapB = new Map(before.map(p => [key(p), p]));
+    const mapA = new Map(after.map(p => [key(p), p]));
+    for (const [k, p] of mapB) {
+        const q = mapA.get(k);
+        if (!q) return { text: `コマ${p.frame}の点を取り消し`, frame: p.frame };
+        if (q.x !== p.x || q.y !== p.y) return { text: `コマ${p.frame}の点を元の位置へ`, frame: p.frame };
+    }
+    for (const [k, q] of mapA) {
+        if (!mapB.has(k)) return { text: `コマ${q.frame}の削除を取り消し`, frame: q.frame };
+    }
+    return null; // 校正のみの変化など
 }
 
 function updateUndoButton() {
@@ -187,7 +212,6 @@ function resetForNewVideo() {
     appState.slowMotionCaptureFps = null;
     undoStack.length = 0;
     setSelectedPoint(null);
-    hideLoadBanner();
     updateDataTable();
     updateGraph();
     refreshCalibrationLabels();
@@ -279,7 +303,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSampleLoad();
     setupPlaybackControls();
     setupRangeControls();
-    setupLoadBanner();
     setupDebugConsole();
     setupCanvasTouch();
     setupModeButtons();
@@ -471,17 +494,19 @@ function setupFileUpload() {
         // 読込直後に全フレームをシーク走査し、実フレーム時刻表＋重複除外を確定して先頭へ
         await startFrameScan();
 
-        // コンテナfpsが確定した後、スロー撮影の痕跡を軽く探す（ベストエフォート）。
-        // 既にスロー設定済み、または他のダイアログ(復元確認等)が開いている最中は出さない。
-        if (!appState.slowMotionCaptureFps) {
-            const hinted = await detectSlowMotionHint(appState.videoBlob);
-            const overlay = document.getElementById('dialog-overlay');
-            const dialogBusy = overlay && overlay.style.display === 'flex';
-            if (hinted && !dialogBusy && !appState.slowMotionCaptureFps) {
-                logDebug('スロー撮影の痕跡を検出しました。設定を確認してください。');
-                openSlowMotionDialog(true);
+        // 読み込み完了ダイアログ（コマ数の提示＋前後カット）。閉じた後に、
+        // スロー撮影の痕跡を軽く探して必要ならスロー設定ダイアログを出す。
+        showTrimDialog(async () => {
+            if (!appState.slowMotionCaptureFps) {
+                const hinted = await detectSlowMotionHint(appState.videoBlob);
+                const overlay = document.getElementById('dialog-overlay');
+                const dialogBusy = overlay && overlay.style.display === 'flex';
+                if (hinted && !dialogBusy && !appState.slowMotionCaptureFps) {
+                    logDebug('スロー撮影の痕跡を検出しました。設定を確認してください。');
+                    openSlowMotionDialog(true);
+                }
             }
-        }
+        });
     });
     
     appState.videoElement.addEventListener('canplay', () => {
@@ -495,6 +520,7 @@ function setupFileUpload() {
         drawVideoFrame();
         updateTimeDisplay();
         updateFrameLabel(appState.currentFrame);
+        drawTrimPreview(); // トリミングダイアログが開いている間はプレビューにも反映
     });
     
     appState.videoElement.addEventListener('error', () => {
@@ -708,7 +734,6 @@ async function startFrameScan() {
     persistState();
     updateGraph();
     updateStepGuide();
-    showLoadBanner(result && result.skipped ? `重複 ${result.skipped} コマを自動除外` : '');
 }
 
 // 全フレームをシークで列挙し、{実時刻, 複製フラグ} を作る。
@@ -1063,8 +1088,11 @@ function setupPlaybackControls() {
 // --- コマ送り（パラパラ送り付き） ------------------------------------
 // ±1コマは即シーク＋バッジ表示。±複数コマは中間のコマを1枚ずつ表示して
 // パラパラ漫画のように移動する（「押したのに変わらない」を無くす）。
+// 各コマを最低 FLIP_MIN_FRAME_MS 表示して「めくれる」感じを保証しつつ、
 // シークが遅い端末では時間予算を超えた時点で残りを直行し、体感を保つ。
-const FLIP_BUDGET_MS = 700;
+const FLIP_BUDGET_MS = 1200;
+const FLIP_MIN_FRAME_MS = 60;
+const sleepMs = (ms) => new Promise(r => setTimeout(r, ms));
 let flipTarget = null;       // パラパラ送り実行中の目的コマ（追加入力で更新）
 
 // シークキューが空になった瞬間を待つ（パラパラ送りの歩調合わせ）
@@ -1143,6 +1171,7 @@ async function runFlipTo(target) {
     const deadline = performance.now() + FLIP_BUDGET_MS;
     try {
         while (flipTarget !== null && appState.currentFrame !== flipTarget) {
+            const frameStart = performance.now();
             const dir = flipTarget > appState.currentFrame ? 1 : -1;
             // 時間予算を使い切ったら残りは直行（遅い端末でも待たせない）
             const next = (performance.now() > deadline) ? flipTarget
@@ -1152,6 +1181,9 @@ async function runFlipTo(target) {
             const moved = appState.currentFrame - startFrame;
             showStepBadge(`${moved > 0 ? '+' : ''}${moved}`, true);
             pulseFrameLabel();
+            // 速すぎる端末では1コマの表示時間を確保する（パラパラ感）
+            const remain = FLIP_MIN_FRAME_MS - (performance.now() - frameStart);
+            if (remain > 0 && appState.currentFrame !== flipTarget) await sleepMs(remain);
         }
     } finally {
         flipTarget = null;
@@ -1170,10 +1202,18 @@ function showStepBadge(text, sticky) {
     if (!sticky) stepBadgeTimer = setTimeout(() => badge.classList.remove('visible'), 700);
 }
 
-// コマ番号は常に「現在 / 総数」で表示（今どのあたりか一目で分かる）
+// コマ番号は常に「現在 / 総数」で表示（今どのあたりか一目で分かる）。
+// 再生バーの表示に加え、映像右上の常設カウンタとトリミングダイアログにも同期する。
 function updateFrameLabel(frame) {
+    const text = `${frame} / ${appState.totalFrames}`;
     const lbl = document.getElementById('lbl-frame');
-    if (lbl) lbl.textContent = `${frame} / ${appState.totalFrames}`;
+    if (lbl) lbl.textContent = text;
+    const counter = document.getElementById('frame-counter');
+    if (counter) { counter.textContent = text; counter.hidden = false; }
+    const trimLbl = document.getElementById('trim-frame-lbl');
+    if (trimLbl) trimLbl.textContent = `コマ ${text}`;
+    const trimSlider = document.getElementById('trim-slider');
+    if (trimSlider) trimSlider.value = frame;
 }
 
 // コマ番号表示をひと呼吸光らせる（アニメーション再トリガのためクラスを付け直す）
@@ -1214,7 +1254,6 @@ function updateRangeUI() {
         }
     }
     if (lbl) lbl.textContent = full ? '全体' : `${appState.rangeIn}–${appState.rangeOut}`;
-    updateLoadBannerRange();
 }
 
 // 範囲確定時にその範囲だけ複製コマを除外（読込時に持ち越した分。1動画につき1回）
@@ -1279,50 +1318,97 @@ function setupRangeControls() {
     if (btnOut) btnOut.addEventListener('click', toggleRangeOut);
 }
 
-// --- 読込直後の案内バナー（コマ数の提示＋前後カットの導線） ------------
-// 読み込めたことを数字（コマ数/fps/長さ）で即座に返し、動きのない前後を
-// イン/アウト点でカットするよう促す。モーダルにせず、作業の邪魔をしない。
-function showLoadBanner(extraNote) {
-    const banner = document.getElementById('load-banner');
-    if (!banner) return;
-    const info = document.getElementById('load-banner-info');
-    if (info) {
-        const fps = appState.videoFps ? `${+appState.videoFps.toFixed(2)} fps` : '-- fps';
-        const dur = appState.videoDuration ? `${appState.videoDuration.toFixed(2)} 秒` : '';
-        info.textContent = `${appState.totalFrames + 1} コマ / ${fps} / ${dur}`
-            + (extraNote ? ` — ${extraNote}` : '');
-    }
-    updateLoadBannerRange();
-    banner.hidden = false;
+// --- 読込直後のトリミングダイアログ ----------------------------------
+// 読み込めたことを数字（コマ数/fps/長さ）で示し、その場で動きのない前後を
+// カットさせる全画面ダイアログ。サンプル動画でも表示する（練習を兼ねる）。
+// プレビューはメインの動画要素をそのままシークして映す。
+let trimPreviewCanvas = null; // 開いている間だけ非null。seekedハンドラが参照する
+
+function drawTrimPreview() {
+    const cv = trimPreviewCanvas;
+    const v = appState.videoElement;
+    if (!cv || !v || v.readyState < 2) return;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#14181D';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    const fit = Math.min(cv.width / v.videoWidth, cv.height / v.videoHeight);
+    const w = v.videoWidth * fit, h = v.videoHeight * fit;
+    ctx.drawImage(v, (cv.width - w) / 2, (cv.height - h) / 2, w, h);
 }
 
-function hideLoadBanner() {
-    const banner = document.getElementById('load-banner');
-    if (banner) banner.hidden = true;
-}
-
-// バナー内の範囲表示を同期し、イン・アウト両方を設定し終えたら役目を終える
-function updateLoadBannerRange() {
-    const banner = document.getElementById('load-banner');
-    if (!banner || banner.hidden) return;
-    const lbl = document.getElementById('load-banner-range');
+function trimRangeText() {
     const full = appState.rangeIn === 0 && appState.rangeOut === appState.totalFrames;
-    if (lbl) {
-        lbl.textContent = full ? '未設定（全コマを解析）'
-            : `コマ ${appState.rangeIn} 〜 ${appState.rangeOut}（${appState.rangeOut - appState.rangeIn + 1} コマ）`;
-    }
-    if (appState.rangeIn > 0 && appState.rangeOut < appState.totalFrames) {
-        setTimeout(hideLoadBanner, 1200); // 両端を切り終えたら少し見せて畳む
-    }
+    return full ? '解析範囲: 全体（未カット）'
+        : `解析範囲: コマ ${appState.rangeIn} 〜 ${appState.rangeOut}（${appState.rangeOut - appState.rangeIn + 1} コマ）`;
 }
 
-function setupLoadBanner() {
-    const btnIn = document.getElementById('banner-set-in');
-    const btnOut = document.getElementById('banner-set-out');
-    const btnClose = document.getElementById('banner-close');
-    if (btnIn) btnIn.addEventListener('click', () => { toggleRangeIn(); updateLoadBannerRange(); });
-    if (btnOut) btnOut.addEventListener('click', () => { toggleRangeOut(); updateLoadBannerRange(); });
-    if (btnClose) btnClose.addEventListener('click', hideLoadBanner);
+function showTrimDialog(onClose) {
+    // テスト・自動化から動画を読み込む場合はダイアログを出さない
+    if (typeof window !== 'undefined' && window.__suppressTrimDialog) {
+        if (onClose) onClose();
+        return;
+    }
+    const overlay = document.getElementById('dialog-overlay');
+    const titleEl = document.getElementById('dialog-title');
+    const bodyEl = document.getElementById('dialog-body');
+    const btnCancel = document.getElementById('dialog-btn-cancel');
+    const btnOk = document.getElementById('dialog-btn-ok');
+    if (!overlay) { if (onClose) onClose(); return; }
+
+    const fps = appState.videoFps ? `${+appState.videoFps.toFixed(2)} fps` : '-- fps';
+    const dur = appState.videoDuration ? `${appState.videoDuration.toFixed(2)} 秒` : '';
+    titleEl.textContent = '読み込み完了';
+    bodyEl.innerHTML = `
+        <div class="trim-info">${appState.totalFrames + 1} コマ / ${fps} / ${dur}</div>
+        <p class="trim-guide">運動していない<b>前後のコマをカット</b>しておくと、あとの点打ちがラクです。<br>
+           スライダで運動の<b>開始</b>コマへ→「ここから」、<b>終了</b>コマへ→「ここまで」。</p>
+        <canvas id="trim-preview" width="640" height="300"></canvas>
+        <div class="trim-controls">
+            <button class="btn-icon" id="trim-prev" title="1コマ戻る"><span class="material-icons-round">chevron_left</span></button>
+            <input type="range" id="trim-slider" min="0" max="${appState.totalFrames}" value="${appState.currentFrame}">
+            <button class="btn-icon" id="trim-next" title="1コマ進む"><span class="material-icons-round">chevron_right</span></button>
+        </div>
+        <div class="trim-controls">
+            <button class="btn btn-secondary btn-small" id="trim-set-in"><span class="material-icons-round">first_page</span>ここから</button>
+            <button class="btn btn-secondary btn-small" id="trim-set-out"><span class="material-icons-round">last_page</span>ここまで</button>
+            <span class="trim-frame" id="trim-frame-lbl">コマ ${appState.currentFrame} / ${appState.totalFrames}</span>
+        </div>
+        <div class="trim-range" id="trim-range-lbl">${trimRangeText()}</div>
+    `;
+
+    // ボタンを「はじめる」1つに（cleanupで元へ戻す）
+    const okOriginal = btnOk.textContent;
+    btnOk.textContent = 'はじめる';
+    btnCancel.style.display = 'none';
+    overlay.style.display = 'flex';
+
+    trimPreviewCanvas = document.getElementById('trim-preview');
+    drawTrimPreview();
+
+    const refreshRange = () => {
+        const lbl = document.getElementById('trim-range-lbl');
+        if (lbl) lbl.textContent = trimRangeText();
+    };
+    document.getElementById('trim-slider').addEventListener('input', (e) => {
+        seekToFrame(parseInt(e.target.value));
+    });
+    document.getElementById('trim-prev').addEventListener('click', () => seekToFrame(appState.currentFrame - 1));
+    document.getElementById('trim-next').addEventListener('click', () => seekToFrame(appState.currentFrame + 1));
+    document.getElementById('trim-set-in').addEventListener('click', () => { toggleRangeIn(); refreshRange(); });
+    document.getElementById('trim-set-out').addEventListener('click', () => { toggleRangeOut(); refreshRange(); });
+
+    const cleanup = () => {
+        overlay.style.display = 'none';
+        trimPreviewCanvas = null;
+        btnOk.textContent = okOriginal;
+        btnCancel.style.display = '';
+        const newOk = btnOk.cloneNode(true);
+        btnOk.parentNode.replaceChild(newOk, btnOk);
+        // 範囲の先頭から作業を始められるように頭出ししておく
+        seekToFrame(appState.rangeIn);
+        if (onClose) onClose();
+    };
+    btnOk.addEventListener('click', cleanup);
 }
 
 // --- シーク直列化キュー ---------------------------------------------
@@ -2564,6 +2650,9 @@ function attachGraphClick(cv) {
             drawVideoFrame();
             updateDataTable();
             updateGraph();
+        } else {
+            // 点以外の場所をタップ → そのグラフを拡大（範囲指定して傾きを測れる）
+            openGraphDialog(cv.dataset.type);
         }
     });
 }
@@ -2608,6 +2697,13 @@ function updateGraph() {
                 const cv = document.createElement('canvas');
                 cv.dataset.type = type;
                 box.appendChild(cv);
+                // 拡大ボタン（グラフの空き地タップでも開くが、明示の入口も置く）
+                const expand = document.createElement('button');
+                expand.className = 'mini-graph-expand';
+                expand.title = '拡大して範囲の傾きを測る';
+                expand.innerHTML = '<span class="material-icons-round">open_in_full</span>';
+                expand.addEventListener('click', (e) => { e.stopPropagation(); openGraphDialog(type); });
+                box.appendChild(expand);
                 stack.appendChild(box);
                 attachGraphClick(cv);
             });
@@ -2772,15 +2868,8 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         gCtx.stroke();
     });
 
-    // 速度グラフには最小二乗の傾き（＝平均加速度）、加速度グラフには平均値を
-    // 右上に常時表示する。「v-tの傾きから重力加速度を読む」授業への橋渡し。
-    const fitLabel = graphFitLabel(graphType, valX, valY, unit);
-    if (fitLabel) {
-        gCtx.fillStyle = UI_COLORS.text;
-        gCtx.font = `bold 10px ${FONT_MONO}`;
-        gCtx.textAlign = 'right';
-        gCtx.fillText(fitLabel, graphCanvas.width - padR, padT + 10);
-    }
+    // 拡大ダイアログの範囲選択が座標変換を使えるように保持しておく
+    graphCanvas._transform = { minX, maxX, minY, maxY, padL, padT, plotW, plotH };
 }
 
 // 3桁の有効数字で表示（1234.5→1230, 9.784→9.78）
@@ -2789,26 +2878,175 @@ function fmtSig3(v) {
     return Number(v.toPrecision(3)).toString();
 }
 
-// グラフ右上の読み出しラベル。速度: 回帰直線の傾き / 加速度: 平均値
-function graphFitLabel(graphType, xs, ys, unit) {
+// 最小二乗の傾き。点が2つ以上なければ null
+function slopeOf(xs, ys) {
     const n = xs.length;
-    if (n < 3) return null;
-    if (graphType === 'vx-t' || graphType === 'vy-t' || graphType === 'v-t') {
-        const mx = xs.reduce((a, b) => a + b, 0) / n;
-        const my = ys.reduce((a, b) => a + b, 0) / n;
-        let sxx = 0, sxy = 0;
-        for (let i = 0; i < n; i++) {
-            sxx += (xs[i] - mx) * (xs[i] - mx);
-            sxy += (xs[i] - mx) * (ys[i] - my);
+    if (n < 2) return null;
+    const mx = xs.reduce((a, b) => a + b, 0) / n;
+    const my = ys.reduce((a, b) => a + b, 0) / n;
+    let sxx = 0, sxy = 0;
+    for (let i = 0; i < n; i++) {
+        sxx += (xs[i] - mx) * (xs[i] - mx);
+        sxy += (xs[i] - mx) * (ys[i] - my);
+    }
+    if (sxx <= 0) return null;
+    return sxy / sxx;
+}
+
+// グラフ種別ごとの「傾き」の単位と物理的な意味
+function slopeMeaning(graphType, unit) {
+    if (graphType === 'y-t' || graphType === 'x-t') return { unit: `${unit}/s`, meaning: '平均速度' };
+    if (graphType === 'vx-t' || graphType === 'vy-t' || graphType === 'v-t') return { unit: `${unit}/s²`, meaning: '平均加速度' };
+    if (graphType === 'y-x') return { unit: '', meaning: '軌道の傾き' };
+    return { unit: `${unit}/s³`, meaning: '' };
+}
+
+// --- グラフ拡大ダイアログ（範囲を指定して傾きを測る） -----------------
+// ミニグラフの空き地タップ / 拡大ボタンで開く。グラフ上を横にドラッグして
+// 範囲を選ぶと、その範囲の点だけで回帰直線を引き、傾きを大きく表示する。
+// v-tグラフなら傾き＝平均加速度（重力加速度の測定がアプリ内で完結する）。
+const GRAPH_TYPE_LABELS = {
+    'y-t': 'y-t', 'x-t': 'x-t', 'y-x': 'y-x（軌道）',
+    'vx-t': 'vx-t', 'vy-t': 'vy-t', 'v-t': '速さ-t',
+    'ax-t': 'ax-t', 'ay-t': 'ay-t', 'a-t': '加速度-t'
+};
+
+function openGraphDialog(graphType) {
+    const overlay = document.getElementById('dialog-overlay');
+    const titleEl = document.getElementById('dialog-title');
+    const bodyEl = document.getElementById('dialog-body');
+    const btnCancel = document.getElementById('dialog-btn-cancel');
+    const btnOk = document.getElementById('dialog-btn-ok');
+    if (!overlay) return;
+
+    const data = appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame))
+        .sort((a, b) => a.frame - b.frame);
+    if (data.length < 2) return;
+    const unit = appState.calibration.scaleRatio ? 'cm' : 'px';
+    const kin = computeKinematics(data);
+    const series = graphSeriesFor(graphType, kin, unit);
+
+    titleEl.textContent = `${GRAPH_TYPE_LABELS[graphType] || graphType} グラフ`;
+    bodyEl.innerHTML = `
+        <div class="graph-dialog-readout" id="ggd-readout"></div>
+        <div class="graph-dialog-canvas-wrap"><canvas id="ggd-canvas"></canvas></div>
+        <div class="graph-dialog-foot">
+            <span class="graph-dialog-hint">グラフ上を横にドラッグ → その範囲だけの傾きを測定</span>
+            <button class="btn btn-secondary btn-small" id="ggd-clear">選択解除</button>
+        </div>
+    `;
+    const okOriginal = btnOk.textContent;
+    btnOk.textContent = '閉じる';
+    btnCancel.style.display = 'none';
+    // グラフを大きく見せるためダイアログを広げる（cleanupで戻す）
+    const dialogEl = overlay.querySelector('.dialog');
+    if (dialogEl) dialogEl.classList.add('dialog-wide');
+    overlay.style.display = 'flex';
+
+    const cv = document.getElementById('ggd-canvas');
+    const readout = document.getElementById('ggd-readout');
+    let selRange = null; // 横軸(データ座標)の選択範囲 {a, b}
+
+    const redraw = () => {
+        drawOneGraph(cv, graphType, data, kin, unit);
+        const tr = cv._transform;
+        if (!tr) return;
+        const ctx = cv.getContext('2d');
+        const toCX = (v) => tr.padL + ((v - tr.minX) / (tr.maxX - tr.minX)) * tr.plotW;
+        const toCY = (v) => tr.padT + tr.plotH - ((v - tr.minY) / (tr.maxY - tr.minY)) * tr.plotH;
+
+        let xs = series.xv, ys = series.yv;
+        let lo = tr.minX, hi = tr.maxX;
+        if (selRange) {
+            lo = Math.min(selRange.a, selRange.b);
+            hi = Math.max(selRange.a, selRange.b);
+            // 選択帯
+            ctx.save();
+            ctx.fillStyle = 'rgba(11, 107, 203, 0.10)';
+            ctx.fillRect(toCX(lo), tr.padT, toCX(hi) - toCX(lo), tr.plotH);
+            ctx.strokeStyle = UI_COLORS.accent;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(toCX(lo), tr.padT); ctx.lineTo(toCX(lo), tr.padT + tr.plotH);
+            ctx.moveTo(toCX(hi), tr.padT); ctx.lineTo(toCX(hi), tr.padT + tr.plotH);
+            ctx.stroke();
+            ctx.restore();
+            const pairs = xs.map((x, i) => [x, ys[i]]).filter(([x]) => x >= lo && x <= hi);
+            xs = pairs.map(p => p[0]); ys = pairs.map(p => p[1]);
         }
-        if (sxx <= 0) return null;
-        return `傾き ${fmtSig3(sxy / sxx)} ${unit}/s²`;
-    }
-    if (graphType === 'ax-t' || graphType === 'ay-t' || graphType === 'a-t') {
-        const mean = ys.reduce((a, b) => a + b, 0) / n;
-        return `平均 ${fmtSig3(mean)} ${unit}/s²`;
-    }
-    return null;
+
+        const slope = slopeOf(xs, ys);
+        if (slope !== null) {
+            // 回帰直線（選択範囲＝無選択なら全体＝の上に引く）
+            const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+            const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(tr.padL, tr.padT, tr.plotW, tr.plotH);
+            ctx.clip();
+            ctx.strokeStyle = UI_COLORS.accent;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([7, 4]);
+            ctx.beginPath();
+            ctx.moveTo(toCX(lo), toCY(my + slope * (lo - mx)));
+            ctx.lineTo(toCX(hi), toCY(my + slope * (hi - mx)));
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        const m = slopeMeaning(graphType, unit);
+        if (readout) {
+            readout.innerHTML = (slope === null)
+                ? '選択範囲に点が2つ以上必要です'
+                : `傾き <b>${fmtSig3(slope)}</b> ${m.unit}`
+                  + (m.meaning ? ` <span class="ggd-meaning">＝ ${m.meaning}</span>` : '')
+                  + `<span class="ggd-count">${xs.length}点${selRange ? '・選択範囲' : '・全体'}</span>`;
+        }
+    };
+
+    // 横ドラッグで範囲選択（タッチ・マウス共通。ほぼ動かなければ選択解除）
+    const dataXOf = (e) => {
+        const tr = cv._transform;
+        const rect = cv.getBoundingClientRect();
+        const px = (e.clientX - rect.left) * (cv.width / (rect.width || 1));
+        return tr.minX + ((px - tr.padL) / tr.plotW) * (tr.maxX - tr.minX);
+    };
+    let dragging = false, dragStartX = 0;
+    cv.style.touchAction = 'none';
+    cv.addEventListener('pointerdown', (e) => {
+        if (!cv._transform) return;
+        dragging = true;
+        dragStartX = e.clientX;
+        try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 合成イベント等では不可 */ }
+        selRange = { a: dataXOf(e), b: dataXOf(e) };
+        redraw();
+    });
+    cv.addEventListener('pointermove', (e) => {
+        if (!dragging || !selRange) return;
+        selRange.b = dataXOf(e);
+        redraw();
+    });
+    cv.addEventListener('pointerup', (e) => {
+        dragging = false;
+        if (Math.abs(e.clientX - dragStartX) < 6) { selRange = null; } // タップ＝解除
+        redraw();
+    });
+    document.getElementById('ggd-clear').addEventListener('click', () => { selRange = null; redraw(); });
+
+    const cleanup = () => {
+        overlay.style.display = 'none';
+        btnOk.textContent = okOriginal;
+        btnCancel.style.display = '';
+        if (dialogEl) dialogEl.classList.remove('dialog-wide');
+        const newOk = btnOk.cloneNode(true);
+        btnOk.parentNode.replaceChild(newOk, btnOk);
+    };
+    btnOk.addEventListener('click', cleanup);
+
+    // ダイアログ表示後にサイズが確定してから描く
+    requestAnimationFrame(redraw);
 }
 
 // --- エクスポート ---
@@ -2943,10 +3181,11 @@ function strobePoints(everyN) {
     return out;
 }
 
-async function generateStrobe(canvas, everyN, radius, onProgress) {
+async function generateStrobe(canvas, everyN, radius, onProgress, mode) {
     const v = appState.videoElement;
     const pts = strobePoints(everyN);
     if (pts.length < 2) return 0;
+    mode = mode || 'photo';
 
     // 動画実解像度で合成（上限超過時のみ縮小）
     const s = Math.min(1, STROBE_MAX_DIM / Math.max(v.videoWidth, v.videoHeight));
@@ -2960,16 +3199,34 @@ async function generateStrobe(canvas, everyN, radius, onProgress) {
         // 基準フレーム＝最初の点のコマを全面に敷く
         await getFrameAt(v, seekTimeOf(pts[0].frame));
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-        // 2点目以降：そのコマの映像から点の周囲だけを円形に切り貼り
-        for (let i = 1; i < pts.length; i++) {
-            await getFrameAt(v, seekTimeOf(pts[i].frame));
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(pts[i].x * s, pts[i].y * s, radius * s, 0, Math.PI * 2);
-            ctx.clip();
-            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-            ctx.restore();
-            if (onProgress) onProgress((i + 1) / pts.length);
+
+        if (mode === 'dots') {
+            // 点マーカーモード: 映像は基準フレームのまま、認識した点だけを
+            // 物体色の丸で打つ（散布図風。シーク不要なので一瞬で終わる）
+            const r = Math.max(4, radius * s * 0.2);
+            const color = COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
+            pts.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x * s, p.y * s, r, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.lineWidth = Math.max(1.5, r * 0.25);
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.stroke();
+            });
+            if (onProgress) onProgress(1);
+        } else {
+            // 写真モード: 2点目以降、そのコマの映像から点の周囲だけを円形に切り貼り
+            for (let i = 1; i < pts.length; i++) {
+                await getFrameAt(v, seekTimeOf(pts[i].frame));
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(pts[i].x * s, pts[i].y * s, radius * s, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
+                if (onProgress) onProgress((i + 1) / pts.length);
+            }
         }
     } finally {
         appState.isScanning = false;
@@ -2987,13 +3244,21 @@ function setupStrobe() {
             return;
         }
         const body = `
-            <p style="margin-bottom:6px;">追跡点のコマを重ねてストロボ写真を作ります。</p>
+            <div style="display:flex; gap:14px; margin-bottom:6px; font-size:0.85rem; align-items:center; flex-wrap:wrap;">
+                <span>表示:</span>
+                <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
+                    <input type="radio" name="strobe-mode" value="photo" checked>写真（残像）
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
+                    <input type="radio" name="strobe-mode" value="dots">点マーカー
+                </label>
+            </div>
             <canvas id="strobe-preview" style="width:100%; border:1px solid #CBD2D9; border-radius:5px; background:#14181D;"></canvas>
             <div style="display:flex; gap:14px; margin-top:8px; font-size:0.8rem;">
-                <label style="flex:1;">間引き（約Nコマおき・時間等間隔）: <span id="strobe-n-val">1</span>
+                <label style="flex:1;">間引き（Nコマおき）: <span id="strobe-n-val">1</span>
                     <input type="range" id="strobe-n" min="1" max="10" value="1" style="width:100%;">
                 </label>
-                <label style="flex:1;">パッチ半径(px): <span id="strobe-r-val">60</span>
+                <label style="flex:1;"><span id="strobe-r-label">パッチ半径(px)</span>: <span id="strobe-r-val">60</span>
                     <input type="range" id="strobe-r" min="10" max="200" value="60" style="width:100%;">
                 </label>
             </div>
@@ -3006,25 +3271,41 @@ function setupStrobe() {
 
         const cv = document.getElementById('strobe-preview');
         const status = document.getElementById('strobe-status');
-        let busy = false;
+        const currentMode = () => {
+            const el = document.querySelector('input[name="strobe-mode"]:checked');
+            return el ? el.value : 'photo';
+        };
+        // 合成中に設定が変わったら捨てずに覚えておき、終わり次第もう一度生成する
+        let busy = false, again = false;
         const regen = async () => {
-            if (busy) return;
+            if (busy) { again = true; return; }
             busy = true;
-            const n = parseInt(document.getElementById('strobe-n').value);
-            const r = parseInt(document.getElementById('strobe-r').value);
-            document.getElementById('strobe-n-val').textContent = n;
-            document.getElementById('strobe-r-val').textContent = r;
-            if (status) status.textContent = '合成中…';
-            const count = await generateStrobe(cv, n, r,
-                (p) => { if (status) status.textContent = `合成中… ${Math.round(p * 100)}%`; });
-            if (status) status.textContent = count ? `${count}コマを合成` : '点が不足しています';
+            do {
+                again = false;
+                const n = parseInt(document.getElementById('strobe-n').value);
+                const r = parseInt(document.getElementById('strobe-r').value);
+                const mode = currentMode();
+                document.getElementById('strobe-n-val').textContent = n;
+                document.getElementById('strobe-r-val').textContent = r;
+                const rLabel = document.getElementById('strobe-r-label');
+                if (rLabel) rLabel.textContent = mode === 'dots' ? '点の大きさ' : 'パッチ半径(px)';
+                if (status) status.textContent = '合成中…';
+                const count = await generateStrobe(cv, n, r,
+                    (p) => { if (status) status.textContent = `合成中… ${Math.round(p * 100)}%`; }, mode);
+                if (status) status.textContent = count
+                    ? (mode === 'dots' ? `${count}点を表示` : `${count}コマを合成`)
+                    : '点が不足しています';
+            } while (again);
             busy = false;
         };
         document.getElementById('strobe-n').addEventListener('change', regen);
         document.getElementById('strobe-r').addEventListener('change', regen);
+        document.querySelectorAll('input[name="strobe-mode"]').forEach(el =>
+            el.addEventListener('change', regen));
         document.getElementById('btn-strobe-save').addEventListener('click', () => {
+            const name = currentMode() === 'dots' ? 'strobe_dots.png' : 'strobe.png';
             cv.toBlob((blob) => {
-                if (blob) { downloadBlob(blob, 'strobe.png'); logDebug('ストロボ写真を保存しました'); }
+                if (blob) { downloadBlob(blob, name); logDebug('ストロボ写真を保存しました'); }
             }, 'image/png');
         });
         regen();
@@ -3152,6 +3433,7 @@ window.confirmAtCrosshair = confirmAtCrosshair;
 window.getCrosshairVideoCoord = getCrosshairVideoCoord;
 window.resetZoom = resetZoom;
 window.updateGraph = updateGraph;
+window.openGraphDialog = openGraphDialog;
 window.deletePoint = deletePoint;
 window.undo = undo;
 window.computeKinematics = computeKinematics;

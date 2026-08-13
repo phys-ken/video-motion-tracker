@@ -68,7 +68,7 @@ const connectWS = (u) => new Promise((res, rej) => { const w = new WebSocket(u);
         // rVFC対応 / 非対応(フォールバック) の両モードを検証
         for (const mode of ['rvfc', 'fallback']) {
             console.log(`\n--- モード: ${mode === 'rvfc' ? 'rVFC対応端末' : 'rVFC非対応の古い端末(フォールバック)'} ---`);
-            await ev(`window.__setRvfc(${mode === 'rvfc'}); return 1;`);
+            await ev(`window.__setRvfc(${mode === 'rvfc'}); window.__suppressTrimDialog = true; return 1;`);
             await ev(`
                 const b = await fetch('${base}/fix/fall120.mp4').then(r=>r.blob());
                 const s=appState; s.frameTimes=[]; s.fpsManual=false; s.fpsMeasured=false; s.trackingData=[];

@@ -154,6 +154,7 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
 
         // --- サンプル動画を実デコードで読み込む ---
         // ボタンはサンプル選択ダイアログを開くようになったため、テストはバックドアを直接呼ぶ
+        await evalExpr(cdp, S, `window.__suppressTrimDialog = true`); // 読込直後のトリムダイアログは出さない
         await evalExpr(cdp, S, `window.loadSampleVideo()`);
         await waitUntil(cdp, S, `window.appState.videoElement.readyState>=2 && window.appState.videoDuration>0`, 20000, '動画メタデータ');
         // プレビュー再生＋FPS実測＋フレーム時刻表構築の完了を待つ

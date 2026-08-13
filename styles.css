@@ -232,10 +232,11 @@ body {
 .hint-overlay span { font-size: 2.6rem; color: rgba(255, 255, 255, 0.4); }
 .hint-overlay p { font-size: 0.9rem; max-width: 280px; line-height: 1.6; }
 
+/* ズームリセットは右下（右上はコマカウンタの指定席） */
 .canvas-floating-controls {
     position: absolute;
-    top: 12px;
-    right: 44px;
+    bottom: 12px;
+    right: 12px;
     z-index: 4;
     display: flex;
     gap: 6px;
@@ -270,54 +271,136 @@ body {
 }
 .step-badge.visible { opacity: 1; }
 
-/* ---- 読込直後の案内バナー ----------------------------------------- */
-.load-banner {
-    background: var(--accent-soft);
-    border: 1px solid #B6D3F0;
-    border-radius: var(--radius);
-    padding: 10px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.load-banner[hidden] { display: none; }
-
-.load-banner-row { display: flex; align-items: center; gap: 8px; }
-
-.load-banner-icon { color: var(--accent); font-size: 1.2rem; }
-
-.load-banner-info {
-    flex: 1;
+/* ---- 右上の常設コマカウンタ「現在 / 総数」 ------------------------- */
+.frame-counter {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 4;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: rgba(20, 24, 29, 0.82);
+    color: #FFFFFF;
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+}
+.frame-counter[hidden] { display: none; }
+
+/* ---- 読込直後のトリミングダイアログ ------------------------------- */
+.trim-info {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+}
+.trim-guide { font-size: 0.84rem; line-height: 1.6; margin-bottom: 8px; }
+.trim-guide b { color: var(--accent-strong); }
+
+#trim-preview {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: #14181D;
+}
+
+.trim-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.trim-controls input[type="range"] {
+    flex: 1;
+    min-width: 120px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--line);
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+.trim-controls input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid #FFFFFF;
+    box-shadow: 0 1px 3px rgba(31, 41, 51, 0.35);
+    cursor: pointer;
+}
+.trim-controls input[type="range"]::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #FFFFFF; cursor: pointer;
+}
+
+.trim-frame {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--text);
 }
 
-.load-banner-close {
-    width: 30px; height: 30px;
-    background: transparent;
-    border: none;
-    color: var(--text-sub);
-}
-.load-banner-close:hover { background: rgba(11, 107, 203, 0.1); }
-
-.load-banner-msg {
-    font-size: 0.82rem;
-    line-height: 1.6;
-    color: var(--text);
-}
-.load-banner-msg b { color: var(--accent-strong); }
-
-.load-banner-actions { flex-wrap: wrap; }
-
-.load-banner-range {
+.trim-range {
+    margin-top: 8px;
+    padding: 7px 10px;
+    background: var(--accent-soft);
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    font-size: 0.8rem;
-    color: var(--text-sub);
+    font-size: 0.82rem;
+    color: var(--accent-strong);
+    font-weight: 700;
 }
+
+/* ---- グラフ拡大ダイアログ（範囲の傾き測定） ------------------------ */
+.dialog.dialog-wide {
+    width: min(860px, 94vw);
+}
+
+.graph-dialog-readout {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1rem;
+    color: var(--text);
+    padding: 8px 10px;
+    background: var(--accent-soft);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+}
+.graph-dialog-readout b { font-size: 1.25rem; color: var(--accent-strong); }
+.graph-dialog-readout .ggd-meaning { color: var(--text); }
+.graph-dialog-readout .ggd-count {
+    float: right;
+    font-size: 0.78rem;
+    color: var(--text-sub);
+    margin-top: 6px;
+}
+
+.graph-dialog-canvas-wrap {
+    height: min(52vh, 460px);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+}
+.graph-dialog-canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+
+.graph-dialog-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+}
+.graph-dialog-hint { font-size: 0.78rem; color: var(--text-sub); }
 
 /* ---- 再生バー ----------------------------------------------------- */
 .video-controls-bar {
@@ -528,7 +611,30 @@ details.panel-collapsible[open] > summary h2::after { transform: rotate(180deg);
 }
 
 /* ---- データパネル & テーブル ------------------------------------- */
-.data-panel { min-height: 160px; }
+.data-panel { min-height: 0; }
+
+/* 数値表は普段は畳む */
+.table-details > summary {
+    list-style: none;
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--text-sub);
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    touch-action: manipulation;
+}
+.table-details > summary::-webkit-details-marker { display: none; }
+.table-details > summary::before {
+    content: "chevron_right";
+    font-family: "Material Icons Round";
+    font-size: 1rem;
+    transition: transform 0.15s;
+}
+.table-details[open] > summary::before { transform: rotate(90deg); }
+.table-details[open] > summary { color: var(--accent-strong); }
+.table-details .table-container { max-height: 240px; margin-top: 6px; }
 
 .panel-header-row {
     display: flex;
@@ -944,6 +1050,22 @@ details.panel-collapsible[open] > summary h2::after { transform: rotate(180deg);
     border-radius: var(--radius-sm);
 }
 .mini-graph canvas { display: block; width: 100%; height: 100%; }
+.mini-graph-expand {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 28px; height: 28px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-sub);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.mini-graph-expand .material-icons-round { font-size: 1rem; }
+.mini-graph-expand:hover { background: var(--accent-soft); color: var(--accent-strong); }
 .graph-empty-hint {
     padding: 24px 8px;
     text-align: center;
