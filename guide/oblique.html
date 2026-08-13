@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>実験手順書 — 斜方投射の動画解析</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+    <div class="doc-label">物理・実験手順書（生徒用）</div>
+    <h1>斜方投射の動画解析 — 山なりのボールの正体</h1>
+    <div class="doc-meta">用意するアプリ: 動画解析トラッカー（先生から配布されたURLをブラウザで開く。インストール不要）</div>
+</header>
+
+<div class="goal">
+    <b>今日のゴール:</b> 斜め上に投げたテニスボールを撮影し、山なりの運動が
+    「<b>水平の等速直線運動</b>」と「<b>鉛直の投げ上げ運動</b>」の組み合わせで
+    できていることを、vx–t・vy–t グラフで確かめる。
+</div>
+
+<h2>準備するもの（班ごと）</h2>
+<ul>
+    <li><b>テニスボール</b></li>
+    <li><b>1 m ものさし</b>（または 10 cm 方眼を印刷した模造紙）</li>
+    <li>撮影用の iPad または スマホ 1台、固定するもの、テープ</li>
+    <li>投げる人・撮る人の2人以上で</li>
+</ul>
+
+<h2><span class="stepno">手順 1</span>撮影する</h2>
+
+<div class="card warn">
+    <div class="card-title">最重要ルール：「ビデオ」モードで撮る。スローは使わない</div>
+    <p>スロー動画は時間の情報が食い違い、加速度が数十分の一に出ます。ふつうのビデオでOK。</p>
+</div>
+
+<figure class="figure">
+<svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="斜方投射の撮影配置">
+    <!-- 床 -->
+    <line x1="20" y1="290" x2="620" y2="290" stroke="#52606D" stroke-width="2"/>
+    <!-- 壁のものさし（水平） -->
+    <rect x="200" y="50" width="200" height="10" fill="#FBF1E1" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="250" y1="50" x2="250" y2="60" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="300" y1="50" x2="300" y2="60" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="350" y1="50" x2="350" y2="60" stroke="#B45309" stroke-width="1.5"/>
+    <text x="200" y="38" font-size="13" fill="#B45309">1 m ものさし（軌道と同じ面の壁に貼る）</text>
+    <!-- 投げる人（簡略） -->
+    <circle cx="80" cy="200" r="12" fill="none" stroke="#1F2933" stroke-width="2"/>
+    <line x1="80" y1="212" x2="80" y2="260" stroke="#1F2933" stroke-width="2"/>
+    <line x1="80" y1="260" x2="66" y2="290" stroke="#1F2933" stroke-width="2"/>
+    <line x1="80" y1="260" x2="94" y2="290" stroke="#1F2933" stroke-width="2"/>
+    <line x1="80" y1="225" x2="108" y2="205" stroke="#1F2933" stroke-width="2"/>
+    <!-- ボールと山なりの軌道 -->
+    <circle cx="118" cy="198" r="9" fill="#C7D912" stroke="#1F2933" stroke-width="1"/>
+    <path d="M 128 192 Q 300 40 500 280" stroke="#0B6BCB" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+    <polygon points="504,288 490,282 500,272" fill="#0B6BCB"/>
+    <text x="256" y="120" font-size="13" fill="#0B6BCB">45°くらいで山なりに（下手投げ）</text>
+    <!-- カメラ位置注記 -->
+    <text x="440" y="150" font-size="13" fill="#1F2933">カメラは図の「手前」に置き、</text>
+    <text x="440" y="170" font-size="13" fill="#1F2933">壁に正対・横向きで固定</text>
+    <text x="440" y="190" font-size="12" fill="#52606D">（3〜4 m 離れて軌道全体を入れる）</text>
+</svg>
+<figcaption>斜方投射の配置（横から見た図）。投げる向きは壁と平行に。</figcaption>
+</figure>
+
+<ol>
+    <li>壁に<b>1 m ものさし</b>を貼る（<b class="term">軌道と同じ面</b>に）。</li>
+    <li>カメラを<b>横向き</b>で固定し、壁から <b>3〜4 m</b> 離れて正対。
+        山なりの軌道全体（投げてから着地まで、幅 2〜3 m・高さ 1〜1.5 m）が入る画角に。</li>
+    <li>録画を開始 → 壁のすぐ前で、ボールを<b>斜め上 45° くらいに下手で軽く</b>投げる。
+        投げる向きは<b>壁と平行</b>に（奥や手前に投げない）→ 着地まで見送って録画を止める。</li>
+    <li>強く投げすぎると画面から出る。<b>ふわっと山なり</b>がちょうどいい。</li>
+    <li>角度を変えて（30°・45°・60°くらい）何本か撮っておくと発展課題に使える。</li>
+</ol>
+
+<div class="check">
+    <div class="card-title">撮影チェックリスト</div>
+    <ul>
+        <li>スローではなく「ビデオ」で撮った／カメラ固定・横向き</li>
+        <li>手を離れてから着地までの山全体が画面に入っている</li>
+        <li>壁と平行に投げた（軌道が手前・奥にふくらんでいない）</li>
+        <li>ものさしが軌道と同じ面に写っている</li>
+    </ul>
+</div>
+
+<h2><span class="stepno">手順 2</span>読み込んで、前後をカット</h2>
+<ol>
+    <li><b>[動画を選択]</b> で読み込む → 「読み込み完了」の画面。</li>
+    <li><b>手を離れた直後</b>のコマで <b>[ここから]</b>、<b>着地直前</b>のコマで
+        <b>[ここまで]</b> → <b>[はじめる]</b>。</li>
+</ol>
+<div class="card warn">
+    <div class="card-title">「手が離れる前」を入れないこと</div>
+    <p>手が押している間は重力以外の力がはたらいている。イン点は「離れた直後」から。</p>
+</div>
+
+<h2><span class="stepno">手順 3・4</span>スケール設定と原点設定</h2>
+<ol>
+    <li><span class="cal-term">[スケール設定]</span> → ものさしの両端で [確定]×2 → 長さを cm で入力。</li>
+    <li><span class="cal-term">[原点を設定]</span> → <b>手を離れた瞬間のボールの中心</b>で [確定]。</li>
+</ol>
+
+<h2><span class="stepno">手順 5</span>点を打つ</h2>
+<ol>
+    <li>十字を<b>ボールの中心</b>に合わせて <b>[確定]</b> → 自動で次のコマへ。着地まで繰り返す。</li>
+</ol>
+<div class="card tip">
+    <div class="card-title">ボールに点を打つコツ（3つのルール）</div>
+    <ul>
+        <li><b>迷ったら拡大</b>（2本指ピンチ）。</li>
+        <li><b>毎回「同じ場所」を狙う</b>（中心か、決めにくければ常に上端）。</li>
+        <li><b>表面の模様や印は追わない</b>（回転でニセの振動が乗る）。</li>
+    </ul>
+</div>
+
+<h2><span class="stepno">手順 6</span>グラフを読む — 山なりを2つに分解する</h2>
+<ol>
+    <li>グラフの <b>おすすめ: [投射（放物線）]</b> を押す → y–x（軌道）・vx–t・vy–t が出る。</li>
+    <li><b>y–x（軌道）</b>: 自分の投げたボールの軌道。左右対称の放物線に見えるか？</li>
+    <li><b>vx–t</b> をタップして拡大 → <b>ほぼ水平な直線</b>なら水平方向は等速。
+        その値が v₀ₓ（＝ v₀cosθ）。</li>
+    <li><b>vy–t</b> をタップして拡大 → プラスから 0 を通ってマイナスへ、
+        <b>1本の右下がり直線</b>。横にドラッグして傾きを読む → −9.8 m/s² に近いか。
+        vy = 0 の時刻が<b>最高点</b>。</li>
+</ol>
+<div class="card tip">
+    <div class="card-title">考えてみよう</div>
+    <p>① 最高点でボールの速度は 0 か？（vy は 0 でも vx は？ グラフで確かめる）<br>
+    ② vy–t のグラフは、鉛直投げ上げの実験と同じ形。つまり斜方投射の鉛直成分は何運動？<br>
+    ③ 上がる時間と落ちる時間、飛び出す速さと着地の速さは、それぞれ等しいか？
+    グラフの対称性から読み取ろう。</p>
+</div>
+
+<h2><span class="stepno">手順 7</span>記録して提出する</h2>
+<ul>
+    <li><b>[ストロボ]</b> → 写真（残像）でPNG保存。<b>横は等間隔・縦は最高点付近ほど詰まる</b>
+        残像列が見えるか。「点マーカー」なら軌道の散布図としても保存できる。</li>
+    <li><b>[保存]</b> → TSVコピー または xlsx 保存。</li>
+    <li>レポート: v₀ₓ・vy–t の傾き・最高点の時刻と高さ・軌道の対称性についての考察。</li>
+</ul>
+
+<h2>うまくいかないとき</h2>
+<table>
+    <tr><th>症状</th><th>原因と対処</th></tr>
+    <tr><td>加速度が数十分の一</td><td>スローで撮っている。ビデオで撮り直す。</td></tr>
+    <tr><td>vx–t が右下がりになる</td>
+        <td>壁と平行に投げられていない（奥へ逸れて遠ざかっている）か、空気抵抗。
+            まず投げる向きを直して撮り直す。</td></tr>
+    <tr><td>軌道が左右非対称</td>
+        <td>手前・奥方向のふくらみ（3次元的に飛んでいる）。壁と平行に投げ直す。</td></tr>
+    <tr><td>ボールがブレる・見失う</td>
+        <td>明るい場所で撮り直す。投げをゆるくして速度を下げるのも有効。</td></tr>
+</table>
+
+<h2>発展課題</h2>
+<ul>
+    <li>角度 30°・45°・60° の動画を比べる: <b>一番遠くへ飛ぶのはどれか</b>。
+        v₀ が同じなら 45° が最大になるはず — 実測で確かめる。</li>
+    <li>v₀ₓ と v₀ᵧ（vy–t の切片）から v₀ と角度 θ を計算し、
+        最高点の高さ・滞空時間の理論値を出して実測と比べる。</li>
+    <li>水平投射の実験（別の手順書）と vy–t を比べる。違いは「切片」だけ？</li>
+</ul>
+
+<footer class="doc-footer">
+    斜方投射の動画解析・実験手順書 ／ 動画は端末内で処理され、外部に送信されません。
+</footer>
+
+</div>
+</body>
+</html>

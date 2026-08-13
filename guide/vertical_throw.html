@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>実験手順書 — 鉛直投げ上げの動画解析</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+    <div class="doc-label">物理基礎・実験手順書（生徒用）</div>
+    <h1>鉛直投げ上げの動画解析 — 上がるときも落ちるときも g か？</h1>
+    <div class="doc-meta">用意するアプリ: 動画解析トラッカー（先生から配布されたURLをブラウザで開く。インストール不要）</div>
+</header>
+
+<div class="goal">
+    <b>今日のゴール:</b> 真上に投げたテニスボールを撮影し、
+    <b>上昇中・最高点・下降中で vy–t グラフの傾きがどうなるか</b>を自分のデータで確かめる。
+    予想: 傾きはずっと同じ −9.8 m/s²？ それとも最高点で変わる？
+</div>
+
+<h2>準備するもの（班ごと）</h2>
+<ul>
+    <li><b>テニスボール</b>（軽く投げ上げられて、当たっても安全）</li>
+    <li><b>1 m ものさし</b>（または 10 cm 方眼を印刷した模造紙）</li>
+    <li>撮影用の iPad または スマホ 1台、固定するもの（三脚か机＋本）、テープ</li>
+</ul>
+
+<h2><span class="stepno">手順 1</span>撮影する</h2>
+
+<div class="card warn">
+    <div class="card-title">最重要ルール：「ビデオ」モードで撮る。スローは使わない</div>
+    <p>スロー動画は時間の情報が食い違い、加速度が数十分の一に出ます。ふつうのビデオでOK。</p>
+</div>
+
+<figure class="figure">
+<svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="投げ上げの撮影配置">
+    <line x1="20" y1="270" x2="620" y2="270" stroke="#52606D" stroke-width="2"/>
+    <line x1="80" y1="20" x2="80" y2="270" stroke="#52606D" stroke-width="2"/>
+    <rect x="84" y="40" width="10" height="200" fill="#FBF1E1" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="84" y1="90" x2="94" y2="90" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="84" y1="140" x2="94" y2="140" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="84" y1="190" x2="94" y2="190" stroke="#B45309" stroke-width="1.5"/>
+    <text x="110" y="34" font-size="13" fill="#B45309">1 m ものさし（投げ上げと同じ面）</text>
+    <!-- 手とボール・上下矢印 -->
+    <circle cx="150" cy="230" r="10" fill="#C7D912" stroke="#1F2933" stroke-width="1"/>
+    <path d="M 143 250 q 7 6 14 0" stroke="#1F2933" stroke-width="2" fill="none"/>
+    <line x1="150" y1="214" x2="150" y2="70" stroke="#0B6BCB" stroke-width="2" stroke-dasharray="5 4"/>
+    <polygon points="150,58 144,72 156,72" fill="#0B6BCB"/>
+    <line x1="168" y1="70" x2="168" y2="214" stroke="#0B6BCB" stroke-width="2" stroke-dasharray="5 4"/>
+    <polygon points="168,226 162,212 174,212" fill="#0B6BCB"/>
+    <text x="186" y="140" font-size="13" fill="#0B6BCB">上がって落ちるまで 1〜1.5 m</text>
+    <!-- カメラ -->
+    <rect x="470" y="130" width="34" height="22" rx="3" fill="#1F2933"/>
+    <polygon points="470,135 456,141 470,147" fill="#1F2933"/>
+    <line x1="487" y1="152" x2="472" y2="268" stroke="#1F2933" stroke-width="2"/>
+    <line x1="487" y1="152" x2="502" y2="268" stroke="#1F2933" stroke-width="2"/>
+    <line x1="487" y1="152" x2="487" y2="268" stroke="#1F2933" stroke-width="2"/>
+    <text x="452" y="120" font-size="13" fill="#1F2933">カメラ（固定・縦向き）</text>
+    <line x1="150" y1="286" x2="487" y2="286" stroke="#52606D" stroke-width="1"/>
+    <line x1="150" y1="280" x2="150" y2="292" stroke="#52606D" stroke-width="1"/>
+    <line x1="487" y1="280" x2="487" y2="292" stroke="#52606D" stroke-width="1"/>
+    <text x="280" y="282" font-size="13" fill="#52606D">2〜3 m 離れる</text>
+</svg>
+<figcaption>投げ上げの配置（横から見た図）。ものさしの前で、真上に投げる。</figcaption>
+</figure>
+
+<ol>
+    <li>壁に<b>1 m ものさし</b>を貼る（<b class="term">ボールが飛ぶのと同じ面</b>に）。</li>
+    <li>カメラを壁から <b>2〜3 m</b> 離して<b>縦向き</b>に固定。
+        レンズの高さは<b>投げ上げ範囲の真ん中</b>あたり。</li>
+    <li>録画を開始 → ものさしのすぐ横で、ボールを<b>真上に軽くトス</b>する
+        （上昇 1〜1.5 m くらい。強く投げると画面から出る）→ キャッチせず床まで見送ると、
+        落下側のデータも長く取れる → 録画を止める。</li>
+    <li><b>投げた手が画面に写り込むのは問題ない</b>。あとで「手が離れた後」だけを解析する。</li>
+    <li>ボールがブレて写るなら、明るい場所で撮り直す。</li>
+</ol>
+
+<div class="check">
+    <div class="card-title">撮影チェックリスト</div>
+    <ul>
+        <li>スローではなく「ビデオ」で撮った／カメラ固定</li>
+        <li>手を離れてから最高点、落ちてくるまでが画面に入っている</li>
+        <li>ものさしが同じ面に貼ってあり写っている</li>
+        <li>ほぼ真上に上がっている（斜めに飛んだら撮り直し）</li>
+    </ul>
+</div>
+
+<h2><span class="stepno">手順 2</span>読み込んで、前後をカット</h2>
+<ol>
+    <li><b>[動画を選択]</b> で読み込むと「読み込み完了」の画面が出る。</li>
+    <li>スライダを動かし、<b>ボールが手を離れた直後</b>のコマで <b>[ここから]</b>、
+        <b>床に着く直前</b>（またはキャッチ直前）で <b>[ここまで]</b> → <b>[はじめる]</b>。</li>
+</ol>
+<div class="card warn">
+    <div class="card-title">「手が離れる前」を入れないこと</div>
+    <p>手がボールを押している間は、重力以外の力がはたらいている。
+    ここを含めると vy–t の最初が直線から外れる。イン点は「離れた直後」。</p>
+</div>
+
+<h2><span class="stepno">手順 3・4</span>スケール設定と原点設定</h2>
+<ol>
+    <li><span class="cal-term">[スケール設定]</span> → 十字をものさしの両端に合わせて [確定]×2 → 長さを cm で入力（1 m なら 100）。</li>
+    <li><span class="cal-term">[原点を設定]</span> → 十字を<b>手を離れた瞬間のボールの中心</b>に合わせて [確定]。
+        こうすると y は「投げた点からの高さ」になる。</li>
+</ol>
+
+<h2><span class="stepno">手順 5</span>点を打つ</h2>
+<ol>
+    <li>十字を<b>ボールの中心</b>に合わせて <b>[確定]</b> → 自動で次のコマへ。最後まで繰り返す。</li>
+</ol>
+<div class="card tip">
+    <div class="card-title">ボールに点を打つコツ（3つのルール）</div>
+    <ul>
+        <li><b>迷ったら拡大</b>（2本指ピンチ）。丸いものの中心は目でかなり正確に狙える。</li>
+        <li><b>毎回「同じ場所」を狙う</b>。中心が決めにくければ「常に上端」でもよい
+            （全コマ同じ場所なら、ズレは速度・加速度から打ち消される）。</li>
+        <li><b>表面の模様や印は追わない</b>（ボールの回転でニセの振動が乗る）。</li>
+    </ul>
+</div>
+
+<h2><span class="stepno">手順 6</span>グラフを読む — 今日の本題</h2>
+<ol>
+    <li>グラフの <b>おすすめ: [落下・投げ上げ]</b> を押す → y–t と vy–t が出る。</li>
+    <li><b>y–t</b>: 山の形（放物線）。てっぺんが最高点。</li>
+    <li><b>vy–t</b> をタップして拡大。<b>1本のまっすぐな直線</b>が、プラスからマイナスへ
+        0 を横切っているはず。</li>
+    <li>横にドラッグして<b>上昇中だけ</b>を選ぶ → 傾きを記録。
+        次に<b>下降中だけ</b>を選ぶ → 傾きを記録。<b>全体</b>でも記録。</li>
+    <li>3つの傾きを比べる。単位の換算は 980 cm/s² = 9.8 m/s²。</li>
+</ol>
+<div class="card tip">
+    <div class="card-title">考えてみよう</div>
+    <p>① 上昇中・下降中・全体の傾きはほぼ同じだったか？ それは何を意味する？<br>
+    ② vy = 0 になる瞬間（グラフが 0 を横切る時刻）と、y–t の山のてっぺんの時刻は一致しているか？<br>
+    ③ 「最高点では速度が 0 だから加速度も 0」という友達に、グラフを使って反論してみよう。<br>
+    ④ 上がる時間と落ちる時間はほぼ同じか？（y–t の山の対称性で確かめる）</p>
+</div>
+
+<h2><span class="stepno">手順 7</span>記録して提出する</h2>
+<ul>
+    <li><b>[ストロボ]</b> でストロボ写真をPNG保存。上昇と下降で同じ高さの残像が
+        重なって見えるか？（教科書の写真と同じ現象）</li>
+    <li><b>[保存]</b> → TSVコピー または xlsx 保存。</li>
+    <li>レポート: 上昇・下降それぞれの傾き、最高点で起きていること、9.8 との比較。</li>
+</ul>
+
+<h2>うまくいかないとき</h2>
+<table>
+    <tr><th>症状</th><th>原因と対処</th></tr>
+    <tr><td>加速度が数十分の一</td><td>スローで撮っている。ビデオで撮り直す。</td></tr>
+    <tr><td>vy–t の最初の数点だけ直線から外れる</td>
+        <td>手が離れる前のコマが混ざっている。イン点を1〜2コマ後ろへずらす。</td></tr>
+    <tr><td>vy–t が全体に波打つ</td>
+        <td>ボールが斜めに飛んで奥行き方向に動いている。真上に投げ直す。</td></tr>
+    <tr><td>最高点付近の点がまばら</td>
+        <td>最高点付近はゆっくり動くので正常。ステップ幅 1 で細かく打つとよい。</td></tr>
+</table>
+
+<h2>発展課題</h2>
+<ul>
+    <li>投げる強さを変えると、vy–t グラフの<b>何が変わって何が変わらない</b>か？
+        （切片と傾きに注目）</li>
+    <li>最高点の高さ h を y–t から読み取り、v₀²= 2gh が成り立つか確かめる。</li>
+    <li>自由落下の実験（別の手順書）と傾きを比べる。同じ値になるか？</li>
+</ul>
+
+<footer class="doc-footer">
+    鉛直投げ上げの動画解析・実験手順書 ／ 動画は端末内で処理され、外部に送信されません。
+</footer>
+
+</div>
+</body>
+</html>

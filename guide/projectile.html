@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>実験手順書 — 水平投射の動画解析</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+<header class="doc-header">
+    <div class="doc-label">物理・実験手順書（生徒用）</div>
+    <h1>水平投射の動画解析 — 横の運動と縦の運動に分けてみる</h1>
+    <div class="doc-meta">用意するアプリ: 動画解析トラッカー（先生から配布されたURLをブラウザで開く。インストール不要）</div>
+</header>
+
+<div class="goal">
+    <b>今日のゴール:</b> 机の端から水平に飛び出したテニスボールを撮影し、
+    運動を<b>水平方向（x）と鉛直方向（y）に分解</b>して調べる。
+    予想: vx–t と vy–t のグラフはそれぞれどんな形になる？
+</div>
+
+<h2>準備するもの（班ごと）</h2>
+<ul>
+    <li><b>テニスボール</b></li>
+    <li><b>机または台</b>（高さ 1 m くらい。ここから飛び出させる）</li>
+    <li><b>1 m ものさし</b>（または 10 cm 方眼を印刷した模造紙）</li>
+    <li>撮影用の iPad または スマホ 1台、固定するもの、テープ</li>
+</ul>
+
+<h2><span class="stepno">手順 1</span>撮影する</h2>
+
+<div class="card warn">
+    <div class="card-title">最重要ルール：「ビデオ」モードで撮る。スローは使わない</div>
+    <p>スロー動画は時間の情報が食い違い、加速度が数十分の一に出ます。ふつうのビデオでOK。</p>
+</div>
+
+<figure class="figure">
+<svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="水平投射の撮影配置">
+    <!-- 床 -->
+    <line x1="20" y1="290" x2="620" y2="290" stroke="#52606D" stroke-width="2"/>
+    <!-- 後ろの壁のものさし（水平） -->
+    <rect x="150" y="60" width="200" height="10" fill="#FBF1E1" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="200" y1="60" x2="200" y2="70" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="250" y1="60" x2="250" y2="70" stroke="#B45309" stroke-width="1.5"/>
+    <line x1="300" y1="60" x2="300" y2="70" stroke="#B45309" stroke-width="1.5"/>
+    <text x="150" y="48" font-size="13" fill="#B45309">1 m ものさし（軌道と同じ面の壁に貼る）</text>
+    <!-- 机 -->
+    <rect x="40" y="150" width="120" height="10" fill="#E4E7EB" stroke="#1F2933" stroke-width="1.5"/>
+    <line x1="50" y1="160" x2="50" y2="290" stroke="#1F2933" stroke-width="2"/>
+    <line x1="150" y1="160" x2="150" y2="290" stroke="#1F2933" stroke-width="2"/>
+    <text x="58" y="232" font-size="13" fill="#1F2933">机（高さ約1 m）</text>
+    <!-- ボールと軌道 -->
+    <circle cx="170" cy="143" r="9" fill="#C7D912" stroke="#1F2933" stroke-width="1"/>
+    <path d="M 180 145 Q 300 160 420 280" stroke="#0B6BCB" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+    <polygon points="426,288 412,280 420,270" fill="#0B6BCB"/>
+    <text x="300" y="200" font-size="13" fill="#0B6BCB">水平に飛び出して曲線を描く</text>
+    <!-- 転がす矢印 -->
+    <line x1="60" y1="140" x2="130" y2="140" stroke="#52606D" stroke-width="2"/>
+    <polygon points="142,140 128,134 128,146" fill="#52606D"/>
+    <text x="56" y="128" font-size="12" fill="#52606D">机の上を転がす</text>
+    <!-- カメラ位置の注記（画面手前） -->
+    <text x="430" y="80" font-size="13" fill="#1F2933">カメラはこの図の「手前」に置き、</text>
+    <text x="430" y="100" font-size="13" fill="#1F2933">壁に正対させて横向きで固定</text>
+    <text x="430" y="120" font-size="13" fill="#52606D">（壁から 3 m ほど離れる）</text>
+</svg>
+<figcaption>水平投射の配置（横から見た図）。カメラは軌道全体が入る位置に横向きで固定。</figcaption>
+</figure>
+
+<ol>
+    <li>机を壁の近くに置き、壁に<b>1 m ものさし</b>を貼る
+        （<b class="term">ボールの軌道と同じ面</b>に。水平でも鉛直でもよい）。</li>
+    <li>カメラを<b>横向き</b>で固定し、壁から <b>3 m</b> ほど離れて正対させる。
+        <b>机の端から床までの軌道全体</b>が画面に入るように。</li>
+    <li>録画を開始 → ボールを<b>机の上でまっすぐ転がして</b>、端から飛び出させる
+        （転がせば飛び出す瞬間の速度が自然に「水平」になる。手で投げると水平になりにくい）。
+        転がす向きは<b>壁と平行</b>に → 録画を止める。</li>
+    <li>速さを変えて2〜3回撮っておくと発展課題に使える。</li>
+</ol>
+
+<div class="check">
+    <div class="card-title">撮影チェックリスト</div>
+    <ul>
+        <li>スローではなく「ビデオ」で撮った／カメラ固定・横向き</li>
+        <li>机の端から着地までの軌道全体が画面に入っている</li>
+        <li>ボールは壁と平行に転がした（手前・奥に飛んでいない）</li>
+        <li>ものさしが軌道と同じ面に写っている</li>
+    </ul>
+</div>
+
+<h2><span class="stepno">手順 2</span>読み込んで、前後をカット</h2>
+<ol>
+    <li><b>[動画を選択]</b> で読み込む → 「読み込み完了」の画面。</li>
+    <li><b>机の端を離れた直後</b>のコマで <b>[ここから]</b>、
+        <b>床に着く直前</b>のコマで <b>[ここまで]</b> → <b>[はじめる]</b>。</li>
+</ol>
+<p>机の上を転がっている間は「等速直線運動」。今日調べたいのは<b>飛び出した後</b>。</p>
+
+<h2><span class="stepno">手順 3・4</span>スケール設定と原点設定</h2>
+<ol>
+    <li><span class="cal-term">[スケール設定]</span> → ものさしの両端で [確定]×2 → 長さを cm で入力。</li>
+    <li><span class="cal-term">[原点を設定]</span> → <b>机の端を離れた瞬間のボールの中心</b>に合わせて [確定]。
+        x は飛び出した点からの水平距離、y は高さ（落ちるとマイナス）になる。</li>
+</ol>
+
+<h2><span class="stepno">手順 5</span>点を打つ</h2>
+<ol>
+    <li>十字を<b>ボールの中心</b>に合わせて <b>[確定]</b> → 自動で次のコマへ。着地まで繰り返す。</li>
+</ol>
+<div class="card tip">
+    <div class="card-title">ボールに点を打つコツ（3つのルール）</div>
+    <ul>
+        <li><b>迷ったら拡大</b>（2本指ピンチ）。</li>
+        <li><b>毎回「同じ場所」を狙う</b>（中心か、決めにくければ常に上端）。</li>
+        <li><b>表面の模様や印は追わない</b>（回転でニセの振動が乗る）。</li>
+    </ul>
+</div>
+
+<h2><span class="stepno">手順 6</span>グラフを読む — 運動を分解する</h2>
+<ol>
+    <li>グラフの <b>おすすめ: [投射（放物線）]</b> を押す → y–x（軌道）・vx–t・vy–t の3つが出る。</li>
+    <li><b>y–x（軌道）</b>: 実験でできた曲線。教科書の「放物線」と同じ形か？</li>
+    <li><b>vx–t</b> をタップして拡大 → 点は<b>ほぼ水平な直線</b>に並ぶはず。
+        横にドラッグして傾きを見る → ほぼ 0 なら「水平方向は等速」。
+        値そのものが飛び出したときの速さ v₀ₓ。</li>
+    <li><b>vy–t</b> をタップして拡大 → <b>右下がりの直線</b>。
+        ドラッグして傾きを読む → −980 cm/s² ＝ −9.8 m/s² に近ければ
+        「鉛直方向は自由落下と同じ」。</li>
+</ol>
+<div class="card tip">
+    <div class="card-title">考えてみよう</div>
+    <p>① vx–t と vy–t の形の違いは、それぞれの方向にはたらく力とどう対応している？<br>
+    ② 「水平に飛び出したボール」と「同じ高さから静かに落としたボール」はどちらが先に着地する？
+    自分の vy–t の結果から答えよう。<br>
+    ③ y–x の軌道が放物線（y ∝ x²）になる理由を、①②から説明してみよう。</p>
+</div>
+
+<h2><span class="stepno">手順 7</span>記録して提出する</h2>
+<ul>
+    <li><b>[ストロボ]</b> → 写真（残像）で保存。<b>横の間隔は等間隔、縦の間隔はだんだん開く</b>
+        のが見えるか？（＝等速＋等加速度の視覚的な証拠）</li>
+    <li><b>[保存]</b> → TSVコピー または xlsx 保存。</li>
+    <li>レポート: v₀ₓ の値、vy–t の傾き、軌道の形についての考察。</li>
+</ul>
+
+<h2>うまくいかないとき</h2>
+<table>
+    <tr><th>症状</th><th>原因と対処</th></tr>
+    <tr><td>加速度が数十分の一</td><td>スローで撮っている。ビデオで撮り直す。</td></tr>
+    <tr><td>vx–t が右下がり／波打つ</td>
+        <td>ボールが壁と平行に飛んでいない（奥や手前に逸れている）。転がす向きを壁と平行に直して撮り直す。</td></tr>
+    <tr><td>vy–t の傾きが 9.8 に届かない</td>
+        <td>スケールの面ずれ（ものさしが軌道の面より手前／奥）をまず疑う。</td></tr>
+    <tr><td>最初の1〜2点が変</td>
+        <td>机の上（転がり中）のコマが混ざっている。イン点を後ろへずらす。</td></tr>
+</table>
+
+<h2>発展課題</h2>
+<ul>
+    <li>転がす速さを変えた動画で比べる: <b>変わるのは何で、変わらないのは何か</b>
+        （v₀ₓ・落下時間・vy–t の傾き）。</li>
+    <li>y–x のデータを表計算に出して、y が x² に比例するか確かめる（x² を横軸にすると直線になる？）。</li>
+    <li>机の高さ h と v₀ₓ から着地点を計算で予想し、実測と比べる。</li>
+</ul>
+
+<footer class="doc-footer">
+    水平投射の動画解析・実験手順書 ／ 動画は端末内で処理され、外部に送信されません。
+</footer>
+
+</div>
+</body>
+</html>

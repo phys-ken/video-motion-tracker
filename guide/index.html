@@ -4,146 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>実験手順書 — 自由落下から重力加速度を求める</title>
-<style>
-/* 生徒向け実験手順書。アプリ本体と同じ配色体系（白ベース・操作の青・校正のアンバー） */
-:root {
-    --text: #1F2933;
-    --text-sub: #52606D;
-    --line: #CBD2D9;
-    --line-soft: #E4E7EB;
-    --accent: #0B6BCB;
-    --accent-strong: #095CB5;
-    --accent-soft: #E3EEF9;
-    --cal: #B45309;
-    --cal-soft: #FBF1E1;
-    --danger: #B42318;
-    --bg: #F7F8FA;
-    --surface: #FFFFFF;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
-    color: var(--text);
-    background: var(--bg);
-    line-height: 1.8;
-    font-size: 16px;
-}
-.page { max-width: 760px; margin: 0 auto; padding: 24px 18px 80px; }
-
-header.doc-header {
-    border-bottom: 3px solid var(--accent);
-    padding: 18px 0 14px;
-    margin-bottom: 8px;
-}
-.doc-label { font-size: 0.82rem; color: var(--text-sub); letter-spacing: 0.06em; }
-h1 { font-size: 1.5rem; line-height: 1.4; margin-top: 4px; }
-.doc-meta { font-size: 0.85rem; color: var(--text-sub); margin-top: 6px; }
-
-.goal {
-    background: var(--accent-soft);
-    border-radius: 6px;
-    padding: 14px 16px;
-    margin: 18px 0;
-    font-size: 0.95rem;
-}
-.goal b { color: var(--accent-strong); }
-
-h2 {
-    font-size: 1.15rem;
-    margin: 40px 0 12px;
-    padding-left: 12px;
-    border-left: 4px solid var(--accent);
-    line-height: 1.5;
-}
-h2 .stepno {
-    display: inline-block;
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #FFFFFF;
-    background: var(--accent);
-    border-radius: 4px;
-    padding: 1px 8px;
-    margin-right: 8px;
-    vertical-align: 2px;
-    letter-spacing: 0.04em;
-}
-h3 { font-size: 1rem; margin: 20px 0 8px; }
-
-p, ul, ol { margin: 10px 0; }
-ul, ol { padding-left: 1.5em; }
-li { margin: 6px 0; }
-b.term { color: var(--accent-strong); }
-.cal-term { color: var(--cal); font-weight: 700; }
-
-.card {
-    background: var(--surface);
-    border: 1px solid var(--line-soft);
-    border-radius: 6px;
-    padding: 14px 16px;
-    margin: 14px 0;
-}
-.card.warn { border-left: 4px solid var(--danger); }
-.card.warn .card-title { color: var(--danger); }
-.card.tip { border-left: 4px solid var(--cal); background: var(--cal-soft); }
-.card.tip .card-title { color: var(--cal); }
-.card-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
-.card p:first-child { margin-top: 0; }
-.card p:last-child, .card ul:last-child { margin-bottom: 0; }
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.88rem;
-    margin: 12px 0;
-    background: var(--surface);
-}
-th, td { border: 1px solid var(--line-soft); padding: 7px 10px; text-align: left; }
-th { background: #F1F3F6; font-size: 0.82rem; color: var(--text-sub); }
-td.num { font-variant-numeric: tabular-nums; }
-
-.figure {
-    background: var(--surface);
-    border: 1px solid var(--line-soft);
-    border-radius: 6px;
-    padding: 12px;
-    margin: 14px 0;
-    text-align: center;
-}
-.figure svg { max-width: 100%; height: auto; }
-.figure figcaption { font-size: 0.8rem; color: var(--text-sub); margin-top: 6px; }
-
-.check {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 12px 16px;
-    margin: 14px 0;
-}
-.check ul { list-style: none; padding-left: 0; }
-.check li { padding-left: 1.7em; position: relative; }
-.check li::before {
-    content: "□";
-    position: absolute;
-    left: 2px;
-    color: var(--accent);
-    font-weight: 700;
-}
-
-footer.doc-footer {
-    margin-top: 56px;
-    padding-top: 12px;
-    border-top: 1px solid var(--line);
-    font-size: 0.78rem;
-    color: var(--text-sub);
-}
-
-@media print {
-    body { background: #FFFFFF; font-size: 11pt; }
-    .page { max-width: none; padding: 0; }
-    h2 { break-after: avoid; }
-    .card, .figure, .check, table { break-inside: avoid; }
-}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="page">
@@ -277,6 +138,18 @@ footer.doc-footer {
     <li>間違えたら <b>[取消]</b>。どの点が取り消されたか映像上に表示される。</li>
     <li>コマ数が多いときは「ステップ幅」を 2〜3 にすると間引いて打てる。</li>
 </ul>
+
+<div class="card tip">
+    <div class="card-title">ボールに点を打つコツ（3つのルール）</div>
+    <ul>
+        <li><b>ルール1: 迷ったら拡大。</b>2本指ピンチで大きくすれば、中心は目でかなり正確に狙える。</li>
+        <li><b>ルール2: 毎回「同じ場所」を狙う。</b>中心が決めにくければ「常にボールの上端」でもよい。
+            速度・加速度は位置の<b>差</b>から計算するので、全コマ同じ場所ならズレは打ち消される。</li>
+        <li><b>ルール3: ボール表面の模様や印は追わない。</b>ボールは回転するので、
+            表面の点を追うとニセの振動がグラフに乗る。狙うのは中心（または上端）。</li>
+    </ul>
+    <p>1〜2ピクセルの誤差（実寸で数mm）は気にしなくてよい。アプリ側で自動的にならされる。</p>
+</div>
 
 <h2><span class="stepno">手順 6</span>グラフから g を読み取る</h2>
 <ol>
