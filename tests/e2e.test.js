@@ -155,6 +155,8 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
         // --- サンプル動画を実デコードで読み込む ---
         // ボタンはサンプル選択ダイアログを開くようになったため、テストはバックドアを直接呼ぶ
         await evalExpr(cdp, S, `window.__suppressTrimDialog = true`); // 読込直後のトリムダイアログは出さない
+        // 起動パネル(運動の種類)は既定に固定して閉じ、以降の操作を一直線に走らせる
+        await evalExpr(cdp, S, `(window.setMotionMode('free-fall'), window.closeModePanel(), 1)`);
         await evalExpr(cdp, S, `window.loadSampleVideo()`);
         await waitUntil(cdp, S, `window.appState.videoElement.readyState>=2 && window.appState.videoDuration>0`, 20000, '動画メタデータ');
         // プレビュー再生＋FPS実測＋フレーム時刻表構築の完了を待つ
@@ -314,6 +316,25 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
         ok(smp.n >= 33 && smp.n <= 35, `新サンプル: 実時刻表 ${smp.n}コマ (期待35±微小)`);
         ok(Math.abs(smp.fps - 60) < 0.5, `新サンプル: fps≈60 (実測 ${smp.fps})`);
         ok(smp.vw === 540, `新サンプル: 540x960で実デコード`);
+
+        // 複製除外がコマを取りこぼさないこと。
+        // 投げ上げの頂点・自由落下の出だしは物体がほとんど動かないため、
+        // 画素比較の感度が鈍いと「エンコード複製」と誤判定して実コマを捨ててしまう
+        // （2026-08 に発覚。頂点の2コマが消えて時間が飛んでいた）。
+        const SAMPLE_FRAMES = [
+            ['free_fall.mp4', 35], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
+            ['oblique_throw.mp4', 43], ['collision_elastic.mp4', 93], ['collision_inelastic.mp4', 105]
+        ];
+        for (const [name, expected] of SAMPLE_FRAMES) {
+            // 直前の読込結果が残っていると待機条件が即成立してしまうので消してから
+            await evalExpr(cdp, S, `(appState.videoName = null, appState.frameTimes = [], 1)`);
+            await evalExpr(cdp, S, `window.loadSampleByUrl('samples/${name}','${name}')`);
+            await waitUntil(cdp, S,
+                `window.appState.videoName==='samples/${name}' && window.appState.isScanning===false && window.appState.frameTimes.length>0`,
+                30000, `${name} 読込`);
+            const n = await evalExpr(cdp, S, `appState.frameTimes.length`);
+            ok(n === expected, `コマ落ちなし: ${name} が ${n}/${expected} コマ`);
+        }
 
     } catch (e) {
         fail++;

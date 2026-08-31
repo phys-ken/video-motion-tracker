@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-08-31a';
+const APP_VERSION = '2026-08-31b';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -49,8 +49,118 @@ const appState = {
     // frameTimeOf(物理時間)だけに乗算し、seekTimeOf(動画シーク)は絶対に触らない。
     physicsFpsMultiplier: 1,
     slowMotionCaptureFps: null, // ユーザーが入力した「実際の撮影fps」。未設定ならnull
-    rawKinematics: false // true=速度・加速度のスムージングを無効化し従来の厳密差分を使う
+    rawKinematics: false, // true=速度・加速度のスムージングを無効化し従来の厳密差分を使う
+    motionMode: null      // 'free-fall' | 'vertical-throw' | 'projectile' | 'oblique'（起動時に選ぶ）
 };
+
+// --- 運動の種類（起動時に選ぶ4種） -------------------------------------
+// このアプリは落体運動の4種に絞っている。種類が決まれば「どちらを正とするか」が
+// 決まるので、生徒が符号で悩まないよう最初に選ばせて自動で入れる。
+// ySign: +1 = 上向きが正（画面座標のyを反転）、-1 = 下向きが正（画面座標のまま）
+const MOTION_MODES = {
+    'free-fall': {
+        label: '自由落下・投げおろし', ySign: -1, xSign: 1,
+        axisText: '下向きが正', graphs: ['y-t', 'vy-t']
+    },
+    'vertical-throw': {
+        label: '鉛直投げ上げ', ySign: 1, xSign: 1,
+        axisText: '上向きが正', graphs: ['y-t', 'vy-t']
+    },
+    'projectile': {
+        label: '水平投射', ySign: -1, xSign: 1,
+        axisText: '下向き・右向きが正', graphs: ['y-x', 'vx-t', 'vy-t']
+    },
+    'oblique': {
+        label: '斜方投射', ySign: 1, xSign: 1,
+        axisText: '上向き・右向きが正', graphs: ['y-x', 'vx-t', 'vy-t']
+    }
+};
+const MOTION_MODE_KEY = 'tracker_for_ipad_motion_mode_v1';
+const DEFAULT_MOTION_MODE = 'free-fall';
+
+function currentMode() {
+    return MOTION_MODES[appState.motionMode] || MOTION_MODES[DEFAULT_MOTION_MODE];
+}
+
+// モードを適用する。軸の符号は表示上の変換なので、既存の打点はそのまま生きる。
+// applyGraphs=false は「復元時など、生徒が選んだグラフ構成を壊したくない」場合。
+function setMotionMode(key, applyGraphs) {
+    if (!MOTION_MODES[key]) return;
+    appState.motionMode = key;
+    try { localStorage.setItem(MOTION_MODE_KEY, key); } catch (e) { /* 無視 */ }
+    if (applyGraphs !== false) applyGraphTypes(MOTION_MODES[key].graphs);
+    refreshModeChip();
+    if (typeof updateDataTable === 'function') updateDataTable();
+    if (typeof updateGraph === 'function') updateGraph();
+    if (typeof drawVideoFrame === 'function' && appState.ctx) drawVideoFrame();
+    logDebug(`運動の種類: ${MOTION_MODES[key].label}（${MOTION_MODES[key].axisText}）`);
+}
+
+function refreshModeChip() {
+    const m = currentMode();
+    const name = document.getElementById('mode-chip-name');
+    const axis = document.getElementById('mode-chip-axis');
+    if (name) name.textContent = appState.motionMode ? m.label : '運動を選ぶ';
+    if (axis) axis.textContent = appState.motionMode ? m.axisText : '';
+    document.querySelectorAll('#mode-grid .mode-card').forEach(c => {
+        c.classList.toggle('active', c.dataset.mode === appState.motionMode);
+    });
+}
+
+function openModePanel() {
+    const ov = document.getElementById('mode-overlay');
+    if (!ov) return;
+    refreshModeChip();
+    updateModePanelReady();
+    ov.style.display = 'flex';
+}
+
+function closeModePanel() {
+    const ov = document.getElementById('mode-overlay');
+    if (ov) ov.style.display = 'none';
+}
+
+// 種類を選ぶまで、パネル内の読み込みボタンは押せない
+function updateModePanelReady() {
+    const ready = !!appState.motionMode;
+    const file = document.getElementById('mode-btn-file');
+    const sample = document.getElementById('mode-btn-sample');
+    const foot = document.getElementById('mode-foot');
+    if (file) {
+        file.classList.toggle('is-disabled', !ready);
+        file.setAttribute('aria-disabled', ready ? 'false' : 'true');
+    }
+    if (sample) sample.disabled = !ready;
+    if (foot) {
+        foot.textContent = ready
+            ? `${currentMode().label} — ${currentMode().axisText}。動画を読み込んで始めましょう。`
+            : 'まず上から運動の種類を選んでください。';
+    }
+}
+
+function setupModePanel() {
+    document.querySelectorAll('#mode-grid .mode-card').forEach(card => {
+        card.addEventListener('click', () => {
+            setMotionMode(card.dataset.mode);
+            updateModePanelReady();
+        });
+    });
+    const sample = document.getElementById('mode-btn-sample');
+    if (sample) sample.addEventListener('click', () => { closeModePanel(); openSamplePicker(); });
+    const file = document.getElementById('mode-btn-file');
+    if (file) file.addEventListener('click', (e) => {
+        if (!appState.motionMode) { e.preventDefault(); return; }
+        closeModePanel();
+    });
+    const chip = document.getElementById('mode-chip');
+    if (chip) chip.addEventListener('click', openModePanel);
+
+    // 前回の選択を覚えておき、パネルではそれが選ばれた状態で開く
+    let saved = null;
+    try { saved = localStorage.getItem(MOTION_MODE_KEY); } catch (e) { /* 無視 */ }
+    if (saved && MOTION_MODES[saved]) setMotionMode(saved, false);
+    refreshModeChip();
+}
 
 // グローバル（window）に公開してテストスイートからアクセス可能にする
 window.appState = appState;
@@ -248,6 +358,7 @@ function persistState() {
             activeObjectId: appState.activeObjectId,
             physicsFpsMultiplier: appState.physicsFpsMultiplier,
             slowMotionCaptureFps: appState.slowMotionCaptureFps,
+            motionMode: appState.motionMode,
             video: {
                 name: appState.videoName,
                 size: appState.videoSize,
@@ -255,6 +366,16 @@ function persistState() {
             }
         }));
     } catch (e) { /* プライベートモード等では無視 */ }
+}
+
+// 前回の打点が保存として残っているか（起動時に運動の種類を聞くかどうかの判断）
+function hasSavedTracking() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const obj = JSON.parse(raw);
+        return Array.isArray(obj.trackingData) && obj.trackingData.length > 0;
+    } catch (e) { return false; }
 }
 
 // 新しい動画を読み込む直前に呼ぶ：前回の計測データ・校正・Undo履歴・選択状態を
@@ -318,6 +439,8 @@ function offerRestoreIfMatching() {
             if (obj.activeObjectId) appState.activeObjectId = obj.activeObjectId;
             if (obj.physicsFpsMultiplier) appState.physicsFpsMultiplier = obj.physicsFpsMultiplier;
             if (obj.slowMotionCaptureFps) appState.slowMotionCaptureFps = obj.slowMotionCaptureFps;
+            // 運動の種類も一緒に戻す（グラフの選択は生徒がいじった状態を尊重して触らない）
+            if (obj.motionMode && MOTION_MODES[obj.motionMode]) setMotionMode(obj.motionMode, false);
             updateDataTable();
             updateGraph();
             refreshCalibrationLabels();
@@ -378,6 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupUndo();
     setupFpsInput();
     setupSlowMotionUI();
+    setupModePanel();
 
     // ウィンドウリサイズ時の処理
     window.addEventListener('resize', handleResize);
@@ -391,7 +515,17 @@ document.addEventListener('DOMContentLoaded', () => {
     updateObjectButtons();
     refreshFpsUI();
 
-    // 空スタート: 動画はユーザーが「動画を選択」または「サンプルで試す」で読み込む
+    // 空スタート: まず「どの運動を測るか」を選ばせ、そのパネルから動画を読み込ませる。
+    // ただし前回の打点が残っている（＝作業の途中で開き直した）ときは、
+    // いちいち聞かずに前回のモードで再開する。
+    if (window.__suppressModePanel) {
+        // 自動テストが「読み込み→操作」を一直線に走らせるための抜け道
+        if (!appState.motionMode) setMotionMode(DEFAULT_MOTION_MODE, false);
+    } else if (hasSavedTracking()) {
+        logDebug('前回の作業が残っています。運動の種類はそのまま再開します。');
+    } else {
+        openModePanel();
+    }
     logDebug("起動完了。動画を読み込んでください。");
 });
 
@@ -412,6 +546,7 @@ function setupSampleLoad() {
     const btn = document.getElementById('btn-load-sample');
     if (btn) btn.addEventListener('click', showSampleDialog);
 }
+const openSamplePicker = () => showSampleDialog();
 
 // サンプル選択ダイアログ。各項目に現象名と一言ヒントのみ（真値の詳細は MANUAL.md）。
 function showSampleDialog() {
@@ -616,19 +751,26 @@ function frameSignature(v) {
     catch (e) { return null; }
     return scanCtx.getImageData(0, 0, SCAN_W, SCAN_H).data;
 }
-// 2フレーム間で「明確に変化した画素」の割合(0..1)。真の複製はほぼ0。
-// 局所的な小さな動き（小さなボールが1px動く等）でも、その周辺の画素は変化するので拾える。
+// 2フレーム間で「明確に変化した画素」の割合(0..1)。真の複製は 0 になる。
+// 1画素あたりのしきい値は低く取る（＝感度を高く保つ）。ここを鈍くすると、
+// 投げ上げの頂点や自由落下の出だしのような「本当にほとんど動かないコマ」を
+// エンコード複製と誤判定して捨ててしまう。実測（vertical_throw.mp4・全54コマ）:
+//   d>24 … 頂点で 0.049% まで落ち、判定ライン0.08%を割って誤爆
+//   d>6  … 最小でも 0.09% で、割り込まない（真の複製は 0% なので余裕を持って分離）
+const PIXEL_DIFF_THRESHOLD = 6;
 function changedFraction(a, b) {
     if (!a || !b || a.length !== b.length) return 1;
     let changed = 0; const n = a.length / 4;
     for (let i = 0; i < a.length; i += 4) {
         const d = Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
-        if (d > 24) changed++;
+        if (d > PIXEL_DIFF_THRESHOLD) changed++;
     }
     return changed / n;
 }
 const DUP_FRACTION = 0.0008;  // 変化画素 < 0.08% ＝ ほぼ画素一致 ＝ エンコード複製
-const DUP_SAFETY_MAX = 0.20;  // 全体の20%超が複製判定なら誤検出とみなし、除外しない
+// 誤検出セーフティの上限。本来の対象である「60fpsコンテナに30fpsの中身」は
+// 複製率が約50%になるため、0.2のままだと本来の用途で一度も発動しなかった。
+const DUP_SAFETY_MAX = 0.60;
 
 // シークして「表示されたフレーム」の mediaTime と署名を返す
 function getFrameAt(v, targetTime) {
@@ -2739,18 +2881,9 @@ function updateDataTable() {
     filteredData.forEach(p => {
         const tr = document.createElement('tr');
         
-        let physX = p.x;
-        let physY = p.y;
-        
-        if (appState.calibration.origin) {
-            physX = p.x - appState.calibration.origin.x;
-            physY = appState.calibration.origin.y - p.y; // Y軸反転
-        }
-        
-        if (appState.calibration.scaleRatio) {
-            physX *= appState.calibration.scaleRatio;
-            physY *= appState.calibration.scaleRatio;
-        }
+        // 原点・スケール・正の向きの適用はグラフや出力と同じ関数に任せる
+        const ph = physCoordOf(p);
+        const physX = ph.x, physY = ph.y;
         
         tr.innerHTML = `
             <td>${p.time.toFixed(3)}</td>
@@ -2871,12 +3004,15 @@ window.deletePoint = deletePoint;
 
 // --- 物理座標・運動学（速度/加速度）の計算 --------------------------------
 // 動画ピクセル座標 → 原点基準・スケール適用済みの物理座標へ
+// 正の向きは運動の種類で決まる（自由落下なら下が正、投げ上げなら上が正…）。
+// 符号は表示上の変換なので、あとからモードを変えても打点データはそのまま使える。
 function physCoordOf(p) {
+    const m = currentMode();
     let x = p.x, y = p.y;
     const cal = appState.calibration;
     if (cal.origin) { x = p.x - cal.origin.x; y = cal.origin.y - p.y; }
     if (cal.scaleRatio) { x *= cal.scaleRatio; y *= cal.scaleRatio; }
-    return { x, y, t: p.time, frame: p.frame, id: p.id };
+    return { x: x * m.xSign, y: y * m.ySign, t: p.time, frame: p.frame, id: p.id };
 }
 
 // 不等間隔対応の3点公式で片方の微分を厳密に求める（端点は片側差分）。
@@ -3004,6 +3140,17 @@ function persistGraphTypes(types) {
     try { localStorage.setItem(GRAPH_TYPES_KEY, JSON.stringify(types)); } catch (e) { /* 無視 */ }
 }
 
+// チェックボックスを指定の構成に切り替えて保存し、再描画する
+function applyGraphTypes(types) {
+    const checklist = document.getElementById('graph-type-checklist');
+    if (!checklist || !Array.isArray(types)) return;
+    checklist.querySelectorAll('input[type="checkbox"]').forEach(b => {
+        b.checked = types.includes(b.value);
+    });
+    persistGraphTypes(types);
+    if (typeof updateGraph === 'function') updateGraph();
+}
+
 function loadGraphTypes() {
     try {
         const raw = localStorage.getItem(GRAPH_TYPES_KEY);
@@ -3031,15 +3178,7 @@ function setupGraphEvents() {
         projectile: ['y-x', 'vx-t', 'vy-t']        // 水平投射・斜方投射
     };
     document.querySelectorAll('#graph-presets .preset-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const types = PRESETS[btn.dataset.preset];
-            if (!types) return;
-            checklist.querySelectorAll('input[type="checkbox"]').forEach(b => {
-                b.checked = types.includes(b.value);
-            });
-            persistGraphTypes(types);
-            updateGraph();
-        });
+        btn.addEventListener('click', () => applyGraphTypes(PRESETS[btn.dataset.preset]));
     });
 
     // 生データ/スムージング切替（既定はスムージングON＝チェックOFF）
@@ -3086,15 +3225,19 @@ function attachGraphClick(cv) {
 // グラフ種別 → 系列の定義（速度・加速度を含む）
 function graphSeriesFor(graphType, kin, unit) {
     const t = kin.map(p => p.t);
+    // 縦軸ラベルに「どちらが正か」を添える。運動の種類で符号が変わるので、
+    // グラフを見ただけで正の向きが分かる状態を常に保つ。
+    const m = currentMode();
+    const dir = m.ySign > 0 ? ' ↑正' : ' ↓正';
     const map = {
-        'y-t':  { xv: t, yv: kin.map(p => p.y),  lx: 't (s)',     ly: `y (${unit})` },
-        'x-t':  { xv: t, yv: kin.map(p => p.x),  lx: 't (s)',     ly: `x (${unit})` },
-        'y-x':  { xv: kin.map(p => p.x), yv: kin.map(p => p.y), lx: `x (${unit})`, ly: `y (${unit})`, traj: true },
-        'vx-t': { xv: t, yv: kin.map(p => p.vx), lx: 't (s)', ly: `vx (${unit}/s)` },
-        'vy-t': { xv: t, yv: kin.map(p => p.vy), lx: 't (s)', ly: `vy (${unit}/s)` },
+        'y-t':  { xv: t, yv: kin.map(p => p.y),  lx: 't (s)',     ly: `y (${unit})${dir}` },
+        'x-t':  { xv: t, yv: kin.map(p => p.x),  lx: 't (s)',     ly: `x (${unit}) →正` },
+        'y-x':  { xv: kin.map(p => p.x), yv: kin.map(p => p.y), lx: `x (${unit}) →正`, ly: `y (${unit})${dir}`, traj: true },
+        'vx-t': { xv: t, yv: kin.map(p => p.vx), lx: 't (s)', ly: `vx (${unit}/s) →正` },
+        'vy-t': { xv: t, yv: kin.map(p => p.vy), lx: 't (s)', ly: `vy (${unit}/s)${dir}` },
         'v-t':  { xv: t, yv: kin.map(p => p.v),  lx: 't (s)', ly: `速さ (${unit}/s)` },
-        'ax-t': { xv: t, yv: kin.map(p => p.ax), lx: 't (s)', ly: `ax (${unit}/s²)`, edgeCut: true },
-        'ay-t': { xv: t, yv: kin.map(p => p.ay), lx: 't (s)', ly: `ay (${unit}/s²)`, edgeCut: true },
+        'ax-t': { xv: t, yv: kin.map(p => p.ax), lx: 't (s)', ly: `ax (${unit}/s²) →正`, edgeCut: true },
+        'ay-t': { xv: t, yv: kin.map(p => p.ay), lx: 't (s)', ly: `ay (${unit}/s²)${dir}`, edgeCut: true },
         'a-t':  { xv: t, yv: kin.map(p => p.a),  lx: 't (s)', ly: `加速度 (${unit}/s²)`, edgeCut: true }
     };
     return map[graphType] || map['y-t'];
@@ -3270,6 +3413,28 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     gCtx.lineTo(padL, padT + plotH);
     gCtx.lineTo(padL + plotW, padT + plotH);
     gCtx.stroke();
+
+    // 値が0をまたぐグラフでは、y=0 の横線（x軸）を濃く引く。
+    // 投げ上げの vy が正→負に変わる瞬間＝最高点が、ひと目で分かるようにするため。
+    if (minY < 0 && maxY > 0) {
+        const zeroY = toCanvasY(0);
+        gCtx.save();
+        gCtx.strokeStyle = UI_COLORS.text;
+        gCtx.lineWidth = 1.6;
+        gCtx.beginPath();
+        gCtx.moveTo(padL, zeroY);
+        gCtx.lineTo(padL + plotW, zeroY);
+        gCtx.stroke();
+        // 目盛りラベルと重ならないよう、プロットの内側に白フチ付きで置く
+        gCtx.font = `bold 8px ${FONT_MONO}`;
+        gCtx.textAlign = 'left';
+        gCtx.lineWidth = 3;
+        gCtx.strokeStyle = UI_COLORS.surface;
+        gCtx.strokeText('0', padL + 3, zeroY - 3);
+        gCtx.fillStyle = UI_COLORS.text;
+        gCtx.fillText('0', padL + 3, zeroY - 3);
+        gCtx.restore();
+    }
     
     // 軸名ラベルの描画
     gCtx.fillStyle = UI_COLORS.textSub;
@@ -3320,6 +3485,21 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
 function fmtSig3(v) {
     if (!isFinite(v)) return '--';
     return Number(v.toPrecision(3)).toString();
+}
+
+// 決定係数 R^2（回帰直線のあてはまりの良さ）。表示用に文字列で返す。
+function r2Of(xs, ys) {
+    const n = xs.length;
+    if (n < 3) return '--';
+    const a = slopeOf(xs, ys);
+    if (a === null) return '--';
+    const mx = xs.reduce((p, q) => p + q, 0) / n;
+    const my = ys.reduce((p, q) => p + q, 0) / n;
+    const b = my - a * mx;
+    let ssr = 0, sst = 0;
+    for (let i = 0; i < n; i++) { ssr += (ys[i] - (a * xs[i] + b)) ** 2; sst += (ys[i] - my) ** 2; }
+    if (!sst) return '--';
+    return (1 - ssr / sst).toFixed(4);
 }
 
 // 最小二乗の傾き。点が2つ以上なければ null
@@ -3450,7 +3630,8 @@ function openGraphDialog(graphType) {
                 ? '選択範囲に点が2つ以上必要です'
                 : `傾き <b>${fmtSig3(slope)}</b> ${m.unit}`
                   + (m.meaning ? ` <span class="ggd-meaning">＝ ${m.meaning}</span>` : '')
-                  + `<span class="ggd-count">${xs.length}点${selRange ? '・選択範囲' : '・全体'}</span>`;
+                  + `<span class="ggd-count">${xs.length}点${selRange ? '・選択範囲' : '・全体'}`
+                  + `<br>R² = ${r2Of(xs, ys)}</span>`;
         }
     };
 
@@ -3876,6 +4057,10 @@ window.frameTimeOf = frameTimeOf;
 window.seekTimeOf = seekTimeOf;
 window.loadSampleVideo = loadSampleVideo;
 window.loadSampleByUrl = loadSampleByUrl;
+window.setMotionMode = setMotionMode;
+window.openModePanel = openModePanel;
+window.closeModePanel = closeModePanel;
+window.MOTION_MODES = MOTION_MODES;
 window.generateStrobe = generateStrobe;
 window.strobePoints = strobePoints;
 window.frameIndexOfTime = frameIndexOfTime;
@@ -3911,6 +4096,8 @@ if (typeof module !== 'undefined') {
         stepFrame,
         sampleColor,
         computeKinematics,
+        setMotionMode,
+        MOTION_MODES,
         derivExact,
         derivSmoothed,
         strobePoints,

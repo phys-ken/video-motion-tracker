@@ -41,8 +41,13 @@
             </div>
         </header>
 
-        <!-- 手順ガイド（常設） -->
+        <!-- 手順ガイド（常設）。左端に現在の運動の種類と正の向きを常設し、タップで変更できる -->
         <nav class="step-guide" id="step-guide">
+            <button class="mode-chip" id="mode-chip" title="運動の種類を変える">
+                <span class="material-icons-round">swap_vert</span>
+                <span class="mode-chip-name" id="mode-chip-name">—</span>
+                <span class="mode-chip-axis" id="mode-chip-axis"></span>
+            </button>
             <span class="step">① 動画</span>
             <span class="step">② スケール</span>
             <span class="step">③ 原点</span>
@@ -115,10 +120,6 @@
                 <div class="panel">
                     <h2>コントロール</h2>
                     <div class="control-settings-row">
-                        <div class="setting-item">
-                            <label for="step-size-select">ステップ幅:</label>
-                            <input type="number" id="step-size-select" min="1" max="30" value="1">
-                        </div>
                         <div class="setting-item">
                             <label for="fps-input">FPS (自動/手動):</label>
                             <input type="number" id="fps-input" min="1" max="600" step="0.01" value="30">
@@ -245,6 +246,16 @@
                     <summary><h2>複数の物体を追う・自動色追跡</h2></summary>
                     <div class="advanced-body">
                         <div class="setting-item" style="text-transform:none; letter-spacing:0;">
+                            <label for="step-size-select">ステップ幅（何コマおきに打つか）:</label>
+                            <input type="number" id="step-size-select" min="1" max="30" value="1">
+                            <p class="advanced-note">
+                                既定の1でかまいません。v–t グラフの傾きから加速度を読む限り、
+                                精度はステップ幅にほとんど左右されません（1／2／3コマおきで誤差0.7〜0.8%）。
+                                長い動画でタップ回数を減らしたいときだけ増やしてください。
+                            </p>
+                        </div>
+                        <div class="advanced-sep"></div>
+                        <div class="setting-item" style="text-transform:none; letter-spacing:0;">
                             <label>追跡する物体:</label>
                             <div class="object-selector" id="object-selector">
                                 <button class="obj-btn active" data-oid="1"><span class="obj-swatch"></span>物体1</button>
@@ -354,6 +365,78 @@
         </div>
     </div>
 
+    <!-- 起動パネル: 運動の種類を選ぶまで動画は読み込ませない。
+         種類が決まれば「どちらを正とするか」が決まるので、生徒が符号で悩まずに済む -->
+    <div class="mode-overlay" id="mode-overlay" style="display: none;">
+        <div class="mode-panel" role="dialog" aria-modal="true" aria-labelledby="mode-title">
+            <h2 id="mode-title">今日はどの運動を測りますか？</h2>
+            <p class="mode-lead">選ぶと、座標軸の正の向きとグラフが自動で設定されます。</p>
+            <div class="mode-grid" id="mode-grid">
+                <button class="mode-card" data-mode="free-fall">
+                    <svg class="mode-fig" viewBox="0 0 64 44" aria-hidden="true">
+                        <line class="ax" x1="12" y1="6" x2="12" y2="38" marker-end="url(#mk)"/>
+                        <text class="axl" x="17" y="36">y</text>
+                        <circle class="pt" cx="40" cy="8" r="3"/><circle class="pt" cx="40" cy="14" r="3"/>
+                        <circle class="pt" cx="40" cy="23" r="3"/><circle class="pt" cx="40" cy="36" r="3"/>
+                    </svg>
+                    <span class="mode-name">自由落下・投げおろし</span>
+                    <span class="mode-axis">下向きが正</span>
+                </button>
+                <button class="mode-card" data-mode="vertical-throw">
+                    <svg class="mode-fig" viewBox="0 0 64 44" aria-hidden="true">
+                        <line class="ax" x1="12" y1="38" x2="12" y2="6" marker-end="url(#mk)"/>
+                        <text class="axl" x="17" y="12">y</text>
+                        <circle class="pt" cx="34" cy="36" r="3"/><circle class="pt" cx="34" cy="22" r="3"/>
+                        <circle class="pt" cx="34" cy="12" r="3"/><circle class="pt" cx="34" cy="8" r="3"/>
+                        <circle class="pt2" cx="46" cy="12" r="3"/><circle class="pt2" cx="46" cy="22" r="3"/>
+                        <circle class="pt2" cx="46" cy="36" r="3"/>
+                    </svg>
+                    <span class="mode-name">鉛直投げ上げ</span>
+                    <span class="mode-axis">上向きが正</span>
+                </button>
+                <button class="mode-card" data-mode="projectile">
+                    <svg class="mode-fig" viewBox="0 0 64 44" aria-hidden="true">
+                        <line class="ax" x1="8" y1="8" x2="8" y2="36" marker-end="url(#mk)"/>
+                        <line class="ax" x1="8" y1="8" x2="52" y2="8" marker-end="url(#mk)"/>
+                        <text class="axl" x="13" y="34">y</text><text class="axl" x="46" y="17">x</text>
+                        <circle class="pt" cx="14" cy="9" r="3"/><circle class="pt" cx="26" cy="12" r="3"/>
+                        <circle class="pt" cx="38" cy="21" r="3"/><circle class="pt" cx="50" cy="36" r="3"/>
+                    </svg>
+                    <span class="mode-name">水平投射</span>
+                    <span class="mode-axis">下向き・右向きが正</span>
+                </button>
+                <button class="mode-card" data-mode="oblique">
+                    <svg class="mode-fig" viewBox="0 0 64 44" aria-hidden="true">
+                        <line class="ax" x1="8" y1="38" x2="8" y2="8" marker-end="url(#mk)"/>
+                        <line class="ax" x1="8" y1="38" x2="52" y2="38" marker-end="url(#mk)"/>
+                        <text class="axl" x="13" y="14">y</text><text class="axl" x="46" y="33">x</text>
+                        <circle class="pt" cx="14" cy="34" r="3"/><circle class="pt" cx="24" cy="20" r="3"/>
+                        <circle class="pt" cx="34" cy="15" r="3"/><circle class="pt" cx="44" cy="21" r="3"/>
+                        <circle class="pt" cx="52" cy="34" r="3"/>
+                    </svg>
+                    <span class="mode-name">斜方投射</span>
+                    <span class="mode-axis">上向き・右向きが正</span>
+                </button>
+            </div>
+            <div class="mode-actions">
+                <label for="video-upload" class="btn btn-secondary" id="mode-btn-file" aria-disabled="true">
+                    <span class="material-icons-round">video_file</span>
+                    動画を選択
+                </label>
+                <button class="btn btn-primary" id="mode-btn-sample" disabled>
+                    <span class="material-icons-round">smart_display</span>
+                    サンプルで試す
+                </button>
+            </div>
+            <p class="mode-foot" id="mode-foot">まず上から運動の種類を選んでください。</p>
+        </div>
+        <svg width="0" height="0" aria-hidden="true"><defs>
+            <marker id="mk" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M0 0 L8 4 L0 8 z" fill="currentColor"/>
+            </marker>
+        </defs></svg>
+    </div>
+
     <!-- Hidden Video Element for background playing & frame capturing -->
     <video id="hidden-video" style="display: none;" playsinline muted></video>
 
@@ -361,6 +444,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-08-31a"></script>
+    <script src="app.js?v=2026-08-31b"></script>
 </body>
 </html>
