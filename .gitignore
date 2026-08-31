@@ -26,3 +26,4 @@ Thumbs.db
 
 # アセット生成用のPython仮想環境（tools/gen_assets.py 用）
 .venv/
+__pycache__/

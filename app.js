@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-08-13d';
+const APP_VERSION = '2026-08-31a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -2059,31 +2059,26 @@ function setPendingCapture(mode) {
 function updateActionHint() {
     const btnConfirm = document.getElementById('btn-confirm');
     const hint = document.getElementById('action-hint');
-    let label = '確定（点を打つ）';
+    // ボタンの文字は「.confirm-sub の部分＋確定」で作る。狭い画面では
+    // .confirm-sub がCSSで畳まれ「確定」だけになる（何を確定するかは上のヒントが言う）。
+    let label = '確定<span class="confirm-sub">（点を打つ）</span>';
     let text = '十字を対象に合わせて「確定」';
 
     if (appState.pendingCapture === 'origin') {
-        label = '原点をここに確定';
+        label = '<span class="confirm-sub">原点をここに</span>確定';
         text = '十字を原点に合わせて「確定」';
     } else if (appState.pendingCapture === 'scale') {
         if (appState.calibration.scaleTempStart) {
-            label = 'スケール終点を確定';
+            label = '<span class="confirm-sub">スケール終点を</span>確定';
             text = '十字を「既知の長さ」の終点に合わせて「確定」';
         } else {
-            label = 'スケール始点を確定';
+            label = '<span class="confirm-sub">スケール始点を</span>確定';
             text = '十字を「既知の長さ」の始点に合わせて「確定」';
         }
     }
     if (btnConfirm) {
         const span = btnConfirm.querySelector('.confirm-label');
-        if (span) {
-            if (appState.pendingCapture === null) {
-                // 通常時は「（点を打つ）」を .confirm-sub に分け、狭い画面ではCSSで畳む
-                span.innerHTML = '確定<span class="confirm-sub">（点を打つ）</span>';
-            } else {
-                span.textContent = label;
-            }
-        }
+        if (span) span.innerHTML = label;
     }
     if (hint) hint.textContent = text;
 }
@@ -2291,6 +2286,7 @@ function captureScalePoint(vPos) {
             cal.scaleActual = actualDist;
             logDebug(`スケール設定完了: ${cal.scaleRatio.toFixed(4)} cm/px (実寸: ${actualDist} cm)`);
             document.getElementById('info-scale').textContent = `${cal.scaleRatio.toFixed(3)} cm/px`;
+            showStepBadge(`スケール ${actualDist} cm を設定`);
             persistState();
             updateDataTable();
             updateGraph();
@@ -2599,42 +2595,122 @@ function drawCalibrationMarkers() {
     }
     
     // スケール描画
-    if (appState.calibration.scaleStart && appState.calibration.scaleEnd) {
-        const localS = videoToLocalCanvas(appState.calibration.scaleStart.x, appState.calibration.scaleStart.y);
-        const localE = videoToLocalCanvas(appState.calibration.scaleEnd.x, appState.calibration.scaleEnd.y);
-        
-        appState.ctx.beginPath();
-        appState.ctx.moveTo(localS.x, localS.y);
-        appState.ctx.lineTo(localE.x, localE.y);
-        appState.ctx.strokeStyle = UI_COLORS.calBright;
-        appState.ctx.lineWidth = 2.0 / scale;
-        appState.ctx.stroke();
-        
-        const angle = Math.atan2(localE.y - localS.y, localE.x - localS.x);
-        const perp = angle + Math.PI / 2;
-        const barLen = 8 / scale;
-        
-        const drawEndBar = (pt) => {
-            appState.ctx.beginPath();
-            appState.ctx.moveTo(pt.x - Math.cos(perp) * barLen, pt.y - Math.sin(perp) * barLen);
-            appState.ctx.lineTo(pt.x + Math.cos(perp) * barLen, pt.y + Math.sin(perp) * barLen);
-            appState.ctx.stroke();
-        };
-        drawEndBar(localS);
-        drawEndBar(localE);
-        
-        appState.ctx.fillStyle = UI_COLORS.calBright;
-        appState.ctx.font = `${11 / scale}px ${FONT_SANS}`;
-        const midX = (localS.x + localE.x) / 2;
-        const midY = (localS.y + localE.y) / 2;
-        appState.ctx.fillText(`${appState.calibration.scaleActual} cm`, midX + 10 / scale, midY - 10 / scale);
-    } else if (appState.calibration.scaleTempStart) {
-        const localTemp = videoToLocalCanvas(appState.calibration.scaleTempStart.x, appState.calibration.scaleTempStart.y);
-        appState.ctx.beginPath();
-        appState.ctx.arc(localTemp.x, localTemp.y, 5 / scale, 0, Math.PI * 2);
-        appState.ctx.fillStyle = UI_COLORS.calBright;
-        appState.ctx.fill();
+    const cal = appState.calibration;
+    if (cal.scaleTempStart) {
+        // 始点を確定した直後〜終点を確定するまで。十字に両矢印が追従し、
+        // 「いまこの長さを選んでいる」ことが常に画面に出ているようにする。
+        const localT = videoToLocalCanvas(cal.scaleTempStart.x, cal.scaleTempStart.y);
+        const cross = getCrosshairVideoCoord();
+        const localC = videoToLocalCanvas(cross.x, cross.y);
+        const px = Math.hypot(cross.x - cal.scaleTempStart.x, cross.y - cal.scaleTempStart.y);
+        drawMeasureArrow(appState.ctx, localT, localC, `${px.toFixed(0)} px`, { dashed: true });
+    } else if (cal.scaleStart && cal.scaleEnd) {
+        const localS = videoToLocalCanvas(cal.scaleStart.x, cal.scaleStart.y);
+        const localE = videoToLocalCanvas(cal.scaleEnd.x, cal.scaleEnd.y);
+        drawMeasureArrow(appState.ctx, localS, localE, `${cal.scaleActual} cm`);
     }
+}
+
+// 角丸矩形のパス。ctx.roundRect は少し前のSafariに無いので自前で持つ。
+function roundRectPath(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') { ctx.roundRect(x, y, w, h, rr); return; }
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+}
+
+// スケール（既知の長さ）を表す両矢印。
+// 「どこを何cmとして測ったのか」は測定全体の前提なので、映像の上でも埋もれない
+// 太さ・大きさで常時出す。線の太さと文字サイズはズーム倍率で割って、拡大しても
+// 画面上の見た目が変わらないようにする。
+function drawMeasureArrow(ctx, a, b, label, opts = {}) {
+    const s = appState.viewState.scale;
+    const u = (v) => v / s;                       // 画面px → 現在のズームでの長さ
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    const perp = ang + Math.PI / 2;
+    const headL = u(13), headW = u(7), cap = u(9);
+    const dashed = !!opts.dashed;
+
+    ctx.save();
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'round';
+
+    const strokePath = () => {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+        [a, b].forEach(p => {                     // 端の直交バー（測った位置を厳密に示す）
+            ctx.moveTo(p.x - Math.cos(perp) * cap, p.y - Math.sin(perp) * cap);
+            ctx.lineTo(p.x + Math.cos(perp) * cap, p.y + Math.sin(perp) * cap);
+        });
+        ctx.stroke();
+    };
+    const headPath = (tip, dir) => {
+        ctx.beginPath();
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(tip.x - Math.cos(dir) * headL - Math.cos(perp) * headW,
+                   tip.y - Math.sin(dir) * headL - Math.sin(perp) * headW);
+        ctx.lineTo(tip.x - Math.cos(dir) * headL + Math.cos(perp) * headW,
+                   tip.y - Math.sin(dir) * headL + Math.sin(perp) * headW);
+        ctx.closePath();
+    };
+
+    // 白フチ（明るい映像・暗い映像のどちらでも輪郭が残る）
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = u(6.5);
+    strokePath();
+    ctx.lineWidth = u(3);
+    headPath(b, ang); ctx.stroke();
+    headPath(a, ang + Math.PI); ctx.stroke();
+
+    // 本体（校正色のアンバー）
+    if (dashed) ctx.setLineDash([u(9), u(6)]);
+    ctx.strokeStyle = UI_COLORS.calBright;
+    ctx.lineWidth = u(2.6);
+    strokePath();
+    ctx.setLineDash([]);
+    ctx.fillStyle = UI_COLORS.calBright;
+    headPath(b, ang); ctx.fill();
+    headPath(a, ang + Math.PI); ctx.fill();
+
+    // ラベルは塗りチップにして、映像の模様に負けないようにする
+    const fs = u(13);
+    ctx.font = `bold ${fs}px ${FONT_SANS}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const padX = u(7), padY = u(4.5);
+    const w = ctx.measureText(label).width + padX * 2;
+    const h = fs + padY * 2;
+    // 線の上側へ少しずらして置く。ただし画面右下の[ズームリセット]ボタンに
+    // 重なるなら反対側へ逃がす（ものさしを床際に置くと必ずぶつかるため）。
+    const off = u(16) + h / 2;
+    let sign = (Math.sin(perp) > 0) ? -1 : 1;
+    const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
+    const toScreen = (lx, ly) => ({
+        x: lx * s + appState.viewState.offsetX,
+        y: ly * s + appState.viewState.offsetY
+    });
+    const hitsCorner = (sg) => {
+        const p = toScreen(midX + Math.cos(perp) * off * sg, midY + Math.sin(perp) * off * sg);
+        return p.x > appState.canvas.width - 72 && p.y > appState.canvas.height - 72;
+    };
+    if (hitsCorner(sign) && !hitsCorner(-sign)) sign = -sign;
+    const mx = midX + Math.cos(perp) * off * sign;
+    const my = midY + Math.sin(perp) * off * sign;
+    roundRectPath(ctx, mx - w / 2, my - h / 2, w, h, u(5));
+    ctx.fillStyle = UI_COLORS.calBright;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = u(1.5);
+    ctx.stroke();
+    ctx.fillStyle = '#1F2933';
+    ctx.fillText(label, mx, my + u(0.5));
+    ctx.restore();
 }
 
 // --- 測定データテーブルの更新 ---
@@ -2840,17 +2916,39 @@ function quadraticFitDerivativeAt(t, arr, lo, hi, centerIdx) {
     return Db / D;
 }
 
-// 前後2点＝計5点の窓で2次回帰し、その微分値を速度・加速度として採用する
-// （境界に近い点は窓が片側に縮む）。窓の点数が3未満(=全体でn<3)の場合のみ
+// 窓の取り方: 端点でも点数を保ったまま横へずらす（縮めない）。
+// 窓を縮めると、端では少ない点で「窓の端での傾き」を求めることになり、
+// クリック誤差の増幅が中央の8倍（加速度はそれを2回かけるので23倍）に達する。
+// 横へずらせば端点でも 8倍→2倍程度に収まる（30fps・25点での実測）。
+function kinematicsWindow(i, n, half) {
+    const w = Math.min(n, 2 * half + 1);
+    let lo = i - half, hi = i + half;
+    if (lo < 0) { lo = 0; hi = w - 1; }
+    if (hi > n - 1) { hi = n - 1; lo = n - w; }
+    return [lo, hi];
+}
+
+// 窓付き2次回帰で微分する。窓の点数が3未満(=全体でn<3)の場合のみ
 // derivExactにフォールバックする。
-const KINEMATICS_WINDOW_HALF = 2;
-function derivSmoothed(t, arr, n) {
+const KINEMATICS_WINDOW_HALF = 2;   // 速度: 前後2点＝5点の窓で位置を回帰
+const ACCEL_WINDOW_HALF = 3;        // 加速度: 前後3点＝7点の窓で速度を回帰
+// 加速度は端に近いほど誤差が大きい（端から順に 296 / 221 / 147 / 80 cm/s²。
+// クリック誤差1px・1px=0.5cm・30fps換算）。両端2点は捨てて、残りだけを示す。
+const ACCEL_EDGE_DROP = 2;
+function derivSmoothed(t, arr, n, half) {
+    const h = (half === undefined) ? KINEMATICS_WINDOW_HALF : half;
     if (n < 3) return derivExact(t, arr, n);
     return arr.map((_, i) => {
-        const lo = Math.max(0, i - KINEMATICS_WINDOW_HALF);
-        const hi = Math.min(n - 1, i + KINEMATICS_WINDOW_HALF);
+        const [lo, hi] = kinematicsWindow(i, n, h);
         return quadraticFitDerivativeAt(t, arr, lo, hi, i);
     });
+}
+
+// 加速度で捨てる端点の数。点が少ないときに全部消えてしまわないよう手加減する。
+function accelEdgeDrop(n, smoothed) {
+    if (!smoothed) return 0;          // 生データ表示は一切加工しない
+    if (n >= 7) return ACCEL_EDGE_DROP;
+    return n >= 5 ? 1 : 0;
 }
 
 // 位置→速度→加速度の数値微分。
@@ -2865,18 +2963,26 @@ function computeKinematics(sortedData, smoothedOverride) {
     const n = pts.length;
     const t = pts.map(p => p.t);
     const deriv = smoothed
-        ? (arr) => derivSmoothed(t, arr, n)
+        ? (arr, half) => derivSmoothed(t, arr, n, half)
         : (arr) => derivExact(t, arr, n);
     const x = pts.map(p => p.x), y = pts.map(p => p.y);
-    const vx = deriv(x), vy = deriv(y);
-    const ax = deriv(vx), ay = deriv(vy);
-    return pts.map((p, i) => ({
-        t: t[i], x: x[i], y: y[i],
-        vx: vx[i], vy: vy[i], v: Math.hypot(vx[i], vy[i]),
-        ax: ax[i], ay: ay[i], a: Math.hypot(ax[i], ay[i]),
-        id: p.id, frame: p.frame,
-        smoothed
-    }));
+    // 速度は5点窓。加速度は「v-tのデータに直線を当てて傾きを読む」操作なので、
+    // 7点窓に広げて安定させる（＝加速度はv-tグラフの傾き、という意味は保つ）。
+    const vx = deriv(x, KINEMATICS_WINDOW_HALF), vy = deriv(y, KINEMATICS_WINDOW_HALF);
+    const ax = deriv(vx, ACCEL_WINDOW_HALF), ay = deriv(vy, ACCEL_WINDOW_HALF);
+    const drop = accelEdgeDrop(n, smoothed);
+    return pts.map((p, i) => {
+        const edge = (i < drop || i >= n - drop);   // 端の加速度は精度が出ないので出さない
+        return {
+            t: t[i], x: x[i], y: y[i],
+            vx: vx[i], vy: vy[i], v: Math.hypot(vx[i], vy[i]),
+            ax: edge ? null : ax[i],
+            ay: edge ? null : ay[i],
+            a: edge ? null : Math.hypot(ax[i], ay[i]),
+            id: p.id, frame: p.frame,
+            smoothed
+        };
+    });
 }
 
 // --- リアルタイムグラフ（複数表示・縦積み） ---
@@ -2987,9 +3093,9 @@ function graphSeriesFor(graphType, kin, unit) {
         'vx-t': { xv: t, yv: kin.map(p => p.vx), lx: 't (s)', ly: `vx (${unit}/s)` },
         'vy-t': { xv: t, yv: kin.map(p => p.vy), lx: 't (s)', ly: `vy (${unit}/s)` },
         'v-t':  { xv: t, yv: kin.map(p => p.v),  lx: 't (s)', ly: `速さ (${unit}/s)` },
-        'ax-t': { xv: t, yv: kin.map(p => p.ax), lx: 't (s)', ly: `ax (${unit}/s²)` },
-        'ay-t': { xv: t, yv: kin.map(p => p.ay), lx: 't (s)', ly: `ay (${unit}/s²)` },
-        'a-t':  { xv: t, yv: kin.map(p => p.a),  lx: 't (s)', ly: `加速度 (${unit}/s²)` }
+        'ax-t': { xv: t, yv: kin.map(p => p.ax), lx: 't (s)', ly: `ax (${unit}/s²)`, edgeCut: true },
+        'ay-t': { xv: t, yv: kin.map(p => p.ay), lx: 't (s)', ly: `ay (${unit}/s²)`, edgeCut: true },
+        'a-t':  { xv: t, yv: kin.map(p => p.a),  lx: 't (s)', ly: `加速度 (${unit}/s²)`, edgeCut: true }
     };
     return map[graphType] || map['y-t'];
 }
@@ -3069,10 +3175,28 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     const valX = series.xv, valY = series.yv;
     const labelX = series.lx, labelY = series.ly;
 
-    let minX = Math.min(...valX);
-    let maxX = Math.max(...valX);
-    let minY = Math.min(...valY);
-    let maxY = Math.max(...valY);
+    // 加速度は両端の点を空欄にしてあるので、値を持つ点だけを描く
+    // （軸の自動スケールにも混ぜない）。
+    const idxs = valX.map((_, i) => i)
+        .filter(i => Number.isFinite(valX[i]) && Number.isFinite(valY[i]));
+    if (idxs.length === 0) {
+        gCtx.fillStyle = UI_COLORS.textSub;
+        gCtx.font = `11px ${FONT_SANS}`;
+        gCtx.textAlign = 'center';
+        gCtx.textBaseline = 'middle';
+        gCtx.fillText("加速度を出すには点がもう少し必要です", graphCanvas.width / 2, graphCanvas.height / 2);
+        return;
+    }
+    // 横軸は「値が空欄の点も含めた全範囲」で取る。こうすると縦に積んだ
+    // y-t・v-t・a-t の時間軸が揃い、a-t は両端が空くことで「端は捨てた」と
+    // ひと目で分かる。縦軸だけを、値のある点で決める。
+    const xsIn = valX.filter(Number.isFinite);
+    const ysIn = idxs.map(i => valY[i]);
+
+    let minX = Math.min(...xsIn);
+    let maxX = Math.max(...xsIn);
+    let minY = Math.min(...ysIn);
+    let maxY = Math.max(...ysIn);
 
     // 最大最小が一致する場合のフラット防止
     if (maxX === minX) { maxX += 1; minX -= 1; }
@@ -3160,20 +3284,20 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     gCtx.lineWidth = 1.8;
     gCtx.beginPath();
     
-    valX.forEach((vx, idx) => {
-        const cx = toCanvasX(vx);
+    idxs.forEach((idx, k) => {
+        const cx = toCanvasX(valX[idx]);
         const cy = toCanvasY(valY[idx]);
-        if (idx === 0) {
+        if (k === 0) {
             gCtx.moveTo(cx, cy);
         } else {
             gCtx.lineTo(cx, cy);
         }
     });
     gCtx.stroke();
-    
+
     // ドットプロット描画 ＆ クリック当たり判定座標の記録
-    valX.forEach((vx, idx) => {
-        const cx = toCanvasX(vx);
+    idxs.forEach((idx) => {
+        const cx = toCanvasX(valX[idx]);
         const cy = toCanvasY(valY[idx]);
         plotPoints.push({ cx, cy, id: data[idx].id, frame: data[idx].frame });
 
@@ -3252,7 +3376,8 @@ function openGraphDialog(graphType) {
         <div class="graph-dialog-readout" id="ggd-readout"></div>
         <div class="graph-dialog-canvas-wrap"><canvas id="ggd-canvas"></canvas></div>
         <div class="graph-dialog-foot">
-            <span class="graph-dialog-hint">グラフ上を横にドラッグ → その範囲だけの傾きを測定</span>
+            <span class="graph-dialog-hint">グラフ上を横にドラッグ → その範囲だけの傾きを測定${
+                series.edgeCut ? '<br>両端の点は加速度の精度が出ないため表示していません' : ''}</span>
             <button class="btn btn-secondary btn-small" id="ggd-clear">選択解除</button>
         </div>
     `;
@@ -3276,7 +3401,10 @@ function openGraphDialog(graphType) {
         const toCX = (v) => tr.padL + ((v - tr.minX) / (tr.maxX - tr.minX)) * tr.plotW;
         const toCY = (v) => tr.padT + tr.plotH - ((v - tr.minY) / (tr.maxY - tr.minY)) * tr.plotH;
 
-        let xs = series.xv, ys = series.yv;
+        // 空欄（加速度の両端）は傾きの計算にも入れない
+        const valid = series.xv.map((_, i) => i)
+            .filter(i => Number.isFinite(series.xv[i]) && Number.isFinite(series.yv[i]));
+        let xs = valid.map(i => series.xv[i]), ys = valid.map(i => series.yv[i]);
         let lo = tr.minX, hi = tr.maxX;
         if (selRange) {
             lo = Math.min(selRange.a, selRange.b);
@@ -3395,7 +3523,9 @@ function buildExportTable() {
     // 後から見て「どの条件で出力したか」が分かるよう、先頭にメモ行を付ける
     // （旧バージョンで書き出したデータかどうかを見分けられず苦労した反省。StageE参照）。
     const notes = [
-        `# ${APP_VERSION} / 速度・加速度: ${appState.rawKinematics ? '生データ（スムージングなし）' : `スムージングあり（前後${KINEMATICS_WINDOW_HALF}点=計${KINEMATICS_WINDOW_HALF * 2 + 1}点の2次回帰）`}`,
+        `# ${APP_VERSION} / 速度・加速度: ${appState.rawKinematics
+            ? '生データ（スムージングなし・端点も含む）'
+            : `速度=計${KINEMATICS_WINDOW_HALF * 2 + 1}点の2次回帰 / 加速度=計${ACCEL_WINDOW_HALF * 2 + 1}点の2次回帰・両端${ACCEL_EDGE_DROP}点は精度が出ないため空欄`}`,
         appState.slowMotionCaptureFps
             ? `# スロー補正: 撮影${appState.slowMotionCaptureFps}fps相当 (${appState.physicsFpsMultiplier.toFixed(3)}倍)`
             : '# スロー補正: なし（通常速度として計算）'
@@ -3403,7 +3533,12 @@ function buildExportTable() {
     return { header, rows, notes };
 }
 
-function round(v, d) { const m = Math.pow(10, d); return Math.round(v * m) / m; }
+// 空欄（加速度の両端）は空文字にする。0で埋めると表計算で平均に混ざってしまう。
+function round(v, d) {
+    if (v === null || v === undefined || !isFinite(v)) return '';
+    const m = Math.pow(10, d);
+    return Math.round(v * m) / m;
+}
 
 function tableToTSV(table) {
     const lines = [...(table.notes || []), table.header.join('\t')];

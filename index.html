@@ -114,14 +114,6 @@
                 <!-- Control Panel -->
                 <div class="panel">
                     <h2>コントロール</h2>
-                    <div class="setting-item" style="text-transform:none; letter-spacing:0;">
-                        <label>追跡する物体:</label>
-                        <div class="object-selector" id="object-selector">
-                            <button class="obj-btn active" data-oid="1"><span class="obj-swatch"></span>物体1</button>
-                            <button class="obj-btn" data-oid="2"><span class="obj-swatch"></span>物体2</button>
-                            <button class="obj-btn" data-oid="3"><span class="obj-swatch"></span>物体3</button>
-                        </div>
-                    </div>
                     <div class="control-settings-row">
                         <div class="setting-item">
                             <label for="step-size-select">ステップ幅:</label>
@@ -172,38 +164,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Auto Tracker Panel (補助機能・折りたたみ) -->
-                <details class="panel panel-collapsible">
-                    <summary><h2>オートトラック (自動色追跡・補助)</h2></summary>
-                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-                        <div style="display: flex; gap: 8px;">
-                            <button class="btn btn-secondary" id="btn-auto-track-step" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
-                                <span class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">play_circle_outline</span>
-                                1コマ追跡
-                            </button>
-                            <button class="btn btn-primary" id="btn-auto-track-run" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
-                                <span class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">smart_toy</span>
-                                自動追跡
-                            </button>
-                            <button class="btn btn-danger-small" id="btn-auto-track-stop" style="display: none; flex: 1; padding: 8px 12px; font-size: 0.85rem; justify-content: center; align-items: center; gap: 8px;">
-                                <span class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">stop</span>
-                                停止
-                            </button>
-                        </div>
-                        <div class="control-settings-row">
-                            <div class="setting-item">
-                                <label for="track-threshold" style="font-size:0.75rem;">感度 (閾値: 0-150):</label>
-                                <input type="range" id="track-threshold" min="5" max="150" value="40" style="width:100%; margin: 4px 0;">
-                                <span id="lbl-threshold" style="font-family:var(--font-mono); font-size:0.75rem; text-align:right;">40</span>
-                            </div>
-                            <div class="setting-item">
-                                <label for="track-window-size" style="font-size:0.75rem;">探索範囲 (px):</label>
-                                <input type="number" id="track-window-size" min="10" max="200" value="60" style="margin-top: 2px;">
-                            </div>
-                        </div>
-                    </div>
-                </details>
 
                 <!-- Realtime Graph Panel (複数表示・縦積み) -->
                 <div class="panel graph-panel">
@@ -279,6 +239,55 @@
                     </div>
                     </details>
                 </div>
+
+                <!-- ふだんは使わない機能。一番下に畳んで置く（衝突実験など、必要な回だけ開く） -->
+                <details class="panel panel-collapsible panel-advanced">
+                    <summary><h2>複数の物体を追う・自動色追跡</h2></summary>
+                    <div class="advanced-body">
+                        <div class="setting-item" style="text-transform:none; letter-spacing:0;">
+                            <label>追跡する物体:</label>
+                            <div class="object-selector" id="object-selector">
+                                <button class="obj-btn active" data-oid="1"><span class="obj-swatch"></span>物体1</button>
+                                <button class="obj-btn" data-oid="2"><span class="obj-swatch"></span>物体2</button>
+                                <button class="obj-btn" data-oid="3"><span class="obj-swatch"></span>物体3</button>
+                            </div>
+                            <p class="advanced-note">衝突実験など、2つ以上の物体を1本の動画で追うときだけ切り替えます。</p>
+                        </div>
+                        <div class="advanced-sep"></div>
+                        <div class="setting-item" style="text-transform:none; letter-spacing:0;">
+                            <label>オートトラック（色で自動追跡）:</label>
+                            <p class="advanced-note">
+                                最初の1点を手で打ってから使います。背景に似た色があると外すので、
+                                結果は必ず打点マップで確認してください。
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary" id="btn-auto-track-step" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
+                                <span class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">play_circle_outline</span>
+                                1コマ追跡
+                            </button>
+                            <button class="btn btn-secondary" id="btn-auto-track-run" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
+                                <span class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">smart_toy</span>
+                                自動追跡
+                            </button>
+                            <button class="btn btn-danger-small" id="btn-auto-track-stop" style="display: none; flex: 1; padding: 8px 12px; font-size: 0.85rem; justify-content: center; align-items: center; gap: 8px;">
+                                <span class="material-icons-round" style="font-size: 1.1rem; vertical-align: middle;">stop</span>
+                                停止
+                            </button>
+                        </div>
+                        <div class="control-settings-row">
+                            <div class="setting-item">
+                                <label for="track-threshold" style="font-size:0.75rem;">感度 (閾値: 0-150):</label>
+                                <input type="range" id="track-threshold" min="5" max="150" value="40" style="width:100%; margin: 4px 0;">
+                                <span id="lbl-threshold" style="font-family:var(--font-mono); font-size:0.75rem; align-self:flex-end;">40</span>
+                            </div>
+                            <div class="setting-item">
+                                <label for="track-window-size" style="font-size:0.75rem;">探索範囲 (px):</label>
+                                <input type="number" id="track-window-size" min="10" max="200" value="60" style="margin-top: 2px;">
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
         </div>
 
@@ -352,6 +361,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-08-13d"></script>
+    <script src="app.js?v=2026-08-31a"></script>
 </body>
 </html>

@@ -283,5 +283,65 @@ assertClose(diff, Math.sqrt(5 * 5 + 2 * 2 + 2 * 2), 0.001, "色差(RGBユーク�
         `スムージング: ノイズ入り不等間隔データでay誤差(二乗和)が従来式より明確に小さい (exact=${sseExact.toFixed(0)}, smooth=${sseSmooth.toFixed(0)})`);
 }
 
+// --- 端点処理: 加速度は両端2点を空欄にする / 速度は全点残す ---
+// 端で窓が片側に縮むと、加速度のクリック誤差が中央の23倍に増幅されて
+// 端の1〜2点だけが跳ねる。窓を横にずらして増幅を抑えたうえで、それでも
+// 残る両端2点は表示・出力から外す、という設計の検証。
+{
+    const G = 980;
+    const mk = (n) => Array.from({ length: n }, (_, i) => {
+        const t = i / 30;
+        return { x: 100 * t, y: 0.5 * G * t * t, time: t, frame: i, id: i };
+    });
+
+    const kin = app.computeKinematics(mk(12), true);
+    assert(kin[0].ay === null && kin[1].ay === null,
+        "端点処理: 先頭2点の加速度は空欄(null)になる");
+    assert(kin[10].ay === null && kin[11].ay === null,
+        "端点処理: 末尾2点の加速度は空欄(null)になる");
+    assert(kin[0].ax === null && kin[0].a === null,
+        "端点処理: ax・加速度の大きさも同時に空欄になる");
+    assert(kin[2].ay !== null && kin[9].ay !== null,
+        "端点処理: 内側の点は空欄にしない");
+    for (let i = 0; i < 12; i++) {
+        assert(kin[i].vy !== null, `端点処理: 速度は全点残す (i=${i})`);
+    }
+    assertClose(kin[0].vy, G * (0 / 30), 1e-6,
+        "端点処理: 窓をずらすので、先頭の速度も等加速度なら理論値と厳密一致");
+    assertClose(kin[11].vy, G * (11 / 30), 1e-6,
+        "端点処理: 末尾の速度も理論値と厳密一致");
+    for (let i = 2; i <= 9; i++) {
+        assertClose(kin[i].ay, G, 1e-6, `端点処理: 残した加速度は理論値と厳密一致 (i=${i})`);
+    }
+
+    // 点が少ないときに全部消えないよう手加減する
+    const few = app.computeKinematics(mk(5), true);
+    assert(few[0].ay === null && few[1].ay !== null && few[3].ay !== null && few[4].ay === null,
+        "端点処理: 5点しかないときは端1点ずつだけ空欄にする");
+    const tiny = app.computeKinematics(mk(4), true);
+    assert(tiny.every(k => k.ay !== null),
+        "端点処理: 4点以下なら空欄にしない（全部消えてしまうため）");
+
+    // 「生データ表示」は一切加工しない
+    const raw = app.computeKinematics(mk(12), false);
+    assert(raw.every(k => k.ay !== null),
+        "端点処理: 生データ表示(スムージング無効)では端点も残す");
+
+    // 出力では 0 ではなく「空欄」にする（表計算で平均に混ざらないように）
+    app.appState.trackingData = mk(12).map(p => ({ ...p, objectId: 1 }));
+    app.appState.rangeIn = 0; app.appState.rangeOut = 11;
+    const tsv = app.tableToTSV(app.buildExportTable());
+    const body = tsv.split('\n').filter(l => l && !l.startsWith('#'));
+    const first = body[1].split('\t');   // body[0] はヘッダ
+    const last = body[body.length - 1].split('\t');
+    assert(first[8] === '' && first[9] === '' && first[10] === '',
+        "出力: 先頭コマの ax/ay/a は空欄（0で埋めない）");
+    assert(last[8] === '' && last[9] === '' && last[10] === '',
+        "出力: 末尾コマの ax/ay/a も空欄");
+    assert(first[3] !== '' && first[5] !== '',
+        "出力: 位置と速度は端でも値が入っている");
+    app.appState.trackingData = [];
+}
+
 console.log("=== 全ロジックテスト合格 ===");
 process.exit(0);

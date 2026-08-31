@@ -599,6 +599,24 @@ details.panel-collapsible > summary h2::after {
 }
 details.panel-collapsible[open] > summary h2::after { transform: rotate(180deg); }
 
+/* ふだん使わない機能を置く一番下のパネル。存在は分かるが、目線は行かない程度に。 */
+details.panel-advanced > summary h2 {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-sub);
+}
+details.panel-advanced > summary h2::after { font-size: 1rem; }
+.advanced-body { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.advanced-note {
+    margin: 6px 0 0;
+    font-size: 0.72rem;
+    line-height: 1.55;
+    color: var(--text-sub);
+    text-transform: none;
+    letter-spacing: 0;
+}
+.advanced-sep { border-top: 1px solid var(--line); margin: 2px 0; }
+
 .calibration-info {
     margin-top: 2px;
     background: var(--surface-2);
@@ -1170,6 +1188,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, label:focus-vis
         gap: 10px;
         overflow: visible;
         align-items: start;
+        /* 縦スクロールする列の中では、内容の高さのまま置く。
+           これが無いと flex アイテムとして押し潰され、パネル同士が重なる。 */
+        flex: 0 0 auto;
+        min-height: auto;
     }
     .graph-panel, .data-panel { grid-column: span 2; }
     .data-panel .table-container { max-height: 260px; }
@@ -1189,7 +1211,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, label:focus-vis
     .btn-confirm .confirm-sub { display: none; } /* 幅が足りない画面では「確定」だけ */
     .action-buttons { gap: 4px; }
     .btn-jog { width: 44px; height: 44px; }
-    .info-indicators { width: 100%; justify-content: flex-end; }
+    /* 再生バー: スライダと時刻表示を1行占有にして、時刻が画面外に切れないようにする */
+    .video-controls-bar { gap: 8px; }
+    .slider-container { flex-basis: 100%; min-width: 0; order: 9; }
+    .time-display { font-size: 0.74rem; }
+    .info-indicators { width: 100%; justify-content: flex-end; order: 10; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -97,7 +97,8 @@ const connectWS = (u) => new Promise((res, rej) => { const w = new WebSocket(u);
             const res = await ev(`
                 const data=appState.trackingData.filter(p=>p.objectId===1).sort((a,b)=>a.frame-b.frame);
                 const kin=window.computeKinematics(data);
-                const amag=kin.map(k=>Math.abs(k.ay)).slice(1,-1).sort((x,y)=>x-y);
+                // 加速度の両端は精度が出ないため null（空欄）になる。中央値からも除く。
+                const amag=kin.map(k=>k.ay).filter(v=>v!==null&&isFinite(v)).map(Math.abs).sort((x,y)=>x-y);
                 const aMed=amag[Math.floor(amag.length/2)];
                 const pts=kin.map(k=>({t:k.t,v:k.vy})); const nL=pts.length;
                 const mt=pts.reduce((a,p)=>a+p.t,0)/nL, mv=pts.reduce((a,p)=>a+p.v,0)/nL;
