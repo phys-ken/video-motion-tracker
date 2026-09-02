@@ -754,8 +754,43 @@ function setupFileUpload() {
     });
     
     appState.videoElement.addEventListener('error', () => {
-        logDebug(`動画エラー発生: ${appState.videoElement.error ? appState.videoElement.error.message : 'Unknown'}`);
+        const err = appState.videoElement.error;
+        logDebug(`動画エラー発生: ${err ? `[code ${err.code}] ${err.message}` : 'Unknown'}`);
+        showVideoErrorDialog(err);
     });
+}
+
+// 動画が開けなかったことを、生徒にも分かる形で画面に出す。
+// これが無いと「真っ黒な画面のまま何も起きない」だけになり、原因も対処も分からない。
+// いちばん多いのは HEVC（iPhone/iPadの「高効率」で撮った動画）を、HEVCを再生
+// できないブラウザ（多くのWindows/ChromeOS環境のChrome等）で開いた場合。
+// iPad の Safari はHEVCを再生できるので、撮った端末でそのまま開けば起きない。
+function showVideoErrorDialog(err) {
+    const code = err ? err.code : 0;
+    const unsupported = (code === 4);   // MEDIA_ERR_SRC_NOT_SUPPORTED
+    const hintEl = document.getElementById('hint-overlay');
+    if (hintEl) {
+        hintEl.style.display = '';
+        const p = hintEl.querySelector('p');
+        if (p) p.textContent = unsupported
+            ? 'この動画は、このブラウザでは開けませんでした'
+            : '動画の読み込みに失敗しました';
+    }
+    const body = unsupported ? `
+        <p style="margin-bottom:10px;">この動画の形式が、いま使っているブラウザに対応していません。
+        <b>iPhone / iPad の「高効率」（HEVC）で撮った動画</b>でよく起きます。</p>
+        <p style="margin-bottom:6px;"><b>どれかひとつで直ります。</b></p>
+        <ul style="margin:0 0 10px 18px; line-height:1.7;">
+            <li><b>撮った iPad / iPhone の Safari でこのページを開く</b>（いちばん簡単。そのまま開けます）</li>
+            <li>撮り直せるなら、端末の <b>設定 &gt; カメラ &gt; フォーマット</b> を
+                <b>「互換性優先」</b>にしてから撮る（H.264 で保存されます）</li>
+            <li>すでにある動画なら、共有時に「最も互換性の高い形式」で書き出す</li>
+        </ul>
+        <p style="font-size:0.8rem; color:#52606D;">
+        ※ 動画そのものは壊れていません。再生できるブラウザで開けばそのまま使えます。</p>`
+        : `<p>動画を読み込めませんでした。ファイルが壊れていないか、別の動画で試せるかを確認してください。</p>
+           <p style="font-size:0.8rem; color:#52606D; margin-top:8px;">${err ? err.message : ''}</p>`;
+    showInputDialog(unsupported ? 'この形式の動画は開けません' : '動画を読み込めません', body, '', () => {});
 }
 
 // --- フレーム走査（fps非依存の実フレーム時刻表＋重複除外） -----------------

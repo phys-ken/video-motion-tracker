@@ -72,11 +72,16 @@ URL を変えたときは `tools/gen_assets.py` で再生成してください�
 追加インストールは不要です（Node 標準機能と、インストール済みの Chrome のみを使います）。
 
 ```bash
-npm test              # ロジック単体テスト（数値微分・時刻表・スロー補正 ほか）
+npm test              # ロジック単体テスト（数値微分・時刻表・座標軸・スロー補正 ほか）
 npm run test:e2e      # 実Chromeを DevTools Protocol で駆動するE2E（動画を実デコード）
 npm run test:precision # 真値既知の動画から g を測り 9.8±5% と v-t の直線性を検証
+npm run test:views    # PC/タブレット横/タブレット縦/スマホの4画面を通しで検証
 npm run test:all      # 上記すべて
 ```
+
+`test:views` は、起動パネル → スケール設定 → 追跡 → グラフ → 提出用レポートまでを
+4つの画面幅で実際に走らせ、**横スクロール・パネルの重なり・画面外へのはみ出し**を
+機械的に検出します（`VIEWS_SHOTS=/path/to/dir` を付けるとスクリーンショットも保存）。
 
 `test.html` は `python3 serve.py` 後にブラウザ（iPad/Safari 可）で開く目視用ハーネスです。
 
