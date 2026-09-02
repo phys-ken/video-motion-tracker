@@ -61,9 +61,10 @@ function assertClose(val1, val2, tol = 0.001, message = "") {
 
 console.log("=== ロジックテスト開始 ===");
 
-// 運動学まわりのテストは「上向きが正」で書かれているので、鉛直投げ上げモードに固定する
-// （自由落下モードは下向きが正で、yの符号が反転する）。
-app.appState.motionMode = 'vertical-throw';
+// 打点データ p.x / p.y は「動画のピクセル座標」（yは下向きが増える）。
+// physCoordOf が原点（＝最初の打点）を引き、運動の種類に応じて符号を付ける。
+// 以下の運動学テストは「落ちる向きを正」として書いてあるので、自由落下モードに固定する。
+app.appState.motionMode = 'free-fall';
 
 // --- 1. 座標変換: アスペクト一致（レターボックス無し）の往復 ---
 // canvas 800x450 は video 1920x1080 と同じ 16:9 → fit のみ、余白0
@@ -348,37 +349,48 @@ assertClose(diff, Math.sqrt(5 * 5 + 2 * 2 + 2 * 2), 0.001, "色差(RGBユーク�
 }
 
 // --- 運動の種類と座標軸の向き ---
-// 種類を選ぶと「どちらを正とするか」が決まる。符号は表示上の変換なので、
-// モードを変えても打点データ（動画ピクセル座標）はそのまま使い回せること。
+// 原点は「最初の打点」で自動的に決まる（生徒に設定させない）。
+// 種類を選ぶと正の向きが決まり、符号は表示上の変換なので打点データは共通のまま。
 {
     const savedMode = app.appState.motionMode;
-    const savedCal = app.appState.calibration;
-    app.appState.calibration = {
-        origin: { x: 100, y: 500 }, scaleRatio: null,
-        scaleStart: null, scaleEnd: null, scaleActual: 0, scaleTempStart: null
-    };
-    // 動画座標で原点より上(y小)・右(x大)にある点
+    // 動画ピクセル座標（yは下へ増える）。最初の打点が原点になる。
     const pts = [
-        { x: 140, y: 400, time: 0.0, frame: 0, id: 1 },
-        { x: 180, y: 300, time: 0.1, frame: 1, id: 2 },
-        { x: 220, y: 250, time: 0.2, frame: 2, id: 3 }
+        { x: 100, y: 500, time: 0.0, frame: 0, id: 1 },   // ← これが原点
+        { x: 140, y: 400, time: 0.1, frame: 1, id: 2 },   // 上へ100px・右へ40px
+        { x: 180, y: 300, time: 0.2, frame: 2, id: 3 }
     ];
-    const yOf = (mode) => {
-        app.appState.motionMode = mode;
-        return app.computeKinematics(pts).map(k => k.y);
-    };
-    const up = yOf('vertical-throw');
-    const down = yOf('free-fall');
-    assertClose(up[0], 100, 1e-9, "上向き正: 原点より上の点は y>0");
-    assertClose(down[0], -100, 1e-9, "下向き正: 同じ点が y<0 になる");
-    assert(up.every((v, i) => Math.abs(v + down[i]) < 1e-9),
+    const kinOf = (mode) => { app.appState.motionMode = mode; return app.computeKinematics(pts); };
+
+    const up = kinOf('vertical-throw');
+    assertClose(up[0].x, 0, 1e-9, "原点は最初の打点（xが0から始まる）");
+    assertClose(up[0].y, 0, 1e-9, "原点は最初の打点（yが0から始まる）");
+    assertClose(up[1].y, 100, 1e-9, "上向き正: 画面上へ100px動いた点は y=+100");
+
+    const down = kinOf('free-fall');
+    assertClose(down[1].y, -100, 1e-9, "下向き正: 同じ点が y=-100 になる");
+    assert(up.every((k, i) => Math.abs(k.y + down[i].y) < 1e-9),
         "モードを変えても符号が反転するだけ（打点データは共通）");
 
-    const xOf = (mode) => { app.appState.motionMode = mode; return app.computeKinematics(pts).map(k => k.x); };
-    assertClose(xOf('projectile')[0], 40, 1e-9, "水平投射: xは右向きが正");
-    assertClose(xOf('oblique')[0], 40, 1e-9, "斜方投射: xも右向きが正");
-    assertClose(yOf('projectile')[0], -100, 1e-9, "水平投射: yは下向きが正");
-    assertClose(yOf('oblique')[0], 100, 1e-9, "斜方投射: yは上向きが正");
+    // 原点を設定していなくても符号が壊れないこと（2026-09に見つかった不具合の回帰テスト）。
+    // 自由落下では「落ちるほど y が増える」でなければならない。
+    const falling = [
+        { x: 270, y: 100, time: 0.0, frame: 0, id: 1 },
+        { x: 270, y: 300, time: 0.1, frame: 1, id: 2 },
+        { x: 270, y: 700, time: 0.2, frame: 2, id: 3 }
+    ];
+    app.appState.motionMode = 'free-fall';
+    const fall = app.computeKinematics(falling);
+    assert(fall[1].y > 0 && fall[2].y > fall[1].y,
+        "自由落下: 落ちるほど y が増える（下向きが正）");
+    assert(fall.every(k => k.vy >= 0), "自由落下: vy が正（下向きに動いている）");
+    app.appState.motionMode = 'vertical-throw';
+    const thrownDown = app.computeKinematics(falling);
+    assert(thrownDown.every(k => k.vy <= 0),
+        "投げ上げモードで同じ落下を見ると vy は負（上向きが正）");
+
+    assertClose(kinOf('projectile')[1].x, 40, 1e-9, "水平投射: xは右向きが正");
+    assertClose(kinOf('projectile')[1].y, -100, 1e-9, "水平投射: yは下向きが正");
+    assertClose(kinOf('oblique')[1].y, 100, 1e-9, "斜方投射: yは上向きが正");
 
     // 4種すべてに表示名・軸の説明・既定グラフが定義されていること
     ['free-fall', 'vertical-throw', 'projectile', 'oblique'].forEach(k => {
@@ -388,9 +400,10 @@ assertClose(diff, Math.sqrt(5 * 5 + 2 * 2 + 2 * 2), 0.001, "色差(RGBユーク�
     });
     assert(app.MOTION_MODES['free-fall'].label === '自由落下・投げおろし',
         "自由落下モードの表示名は「自由落下・投げおろし」");
+    assert(!app.MOTION_MODES['projectile'].graphs.includes('y-x'),
+        "水平投射の既定グラフに y-x は含めない");
 
     app.appState.motionMode = savedMode;
-    app.appState.calibration = savedCal;
 }
 
 console.log("=== 全ロジックテスト合格 ===");

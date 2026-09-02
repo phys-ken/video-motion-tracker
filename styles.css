@@ -260,6 +260,25 @@ body {
     .mode-chip-axis { display: none; }
 }
 
+/* スケール未設定のまま進んでいることを示す常設チップ（タップで設定に戻れる） */
+.warn-chip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding: 4px 10px;
+    border: 1px solid var(--cal);
+    background: var(--cal-soft);
+    color: var(--cal);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.warn-chip[hidden] { display: none; }
+
 .step-guide .step {
     font-size: 0.78rem;
     font-weight: 400;
@@ -1369,3 +1388,108 @@ button:focus-visible, input:focus-visible, select:focus-visible, label:focus-vis
 /* 操作要素はダブルタップズーム抑止（クリック遅延も解消） */
 button, .btn, .btn-icon, .obj-btn, .btn-confirm, label,
 input, summary, .data-table tr { touch-action: manipulation; }
+
+
+/* ---- ② スケール設定ステップ --------------------------------------
+   モードではなくステップとして扱う。帯・映像の枠・下部バーの構成を
+   同時に変えることで、いま何をしているかを取り違えられなくする
+   （NN/g「モードは冗長な手がかりを最低2つ」）。 */
+.scale-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: var(--cal-soft);
+    border: 1px solid var(--cal);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    color: var(--text);
+}
+.scale-banner[hidden] { display: none; }
+.scale-banner-badge {
+    font-weight: 700;
+    color: #FFFFFF;
+    background: var(--cal);
+    padding: 3px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.scale-banner-step {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--cal);
+    white-space: nowrap;
+}
+.scale-banner-text { flex: 1 1 220px; line-height: 1.5; }
+.scale-banner-skip {
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    padding: 4px 6px;
+    font: inherit;
+    font-size: 0.76rem;
+    color: var(--text-sub);
+    text-decoration: underline;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.scale-banner-skip:hover { color: var(--text); }
+
+/* 設定中は映像の枠を校正色にする（2つめの手がかり） */
+body.calibrating .canvas-container {
+    box-shadow: 0 0 0 3px var(--cal);
+    border-radius: var(--radius);
+}
+
+/* 3つめの手がかり: 下部バーの構成そのものを変える。
+   設定中は「点を打つ」に関係するボタンを消し、[やり直す] と [確定] だけにする */
+.btn-scale-redo { display: none; }
+.action-bar.scale-step .btn-scale-redo { display: inline-flex; }
+/* 帯が同じことを言っているので、ヒント行は畳む */
+.action-bar.scale-step .action-hint { display: none; }
+.action-bar.scale-step #btn-undo,
+.action-bar.scale-step #btn-prev-10,
+.action-bar.scale-step #btn-prev-1,
+.action-bar.scale-step #btn-next-1,
+.action-bar.scale-step #btn-next-10 { display: none; }
+
+/* ---- 操作を止めない通知 ------------------------------------------- */
+.undo-badge {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 132px);
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(560px, calc(100vw - 24px));
+    padding: 10px 12px 10px 16px;
+    background: var(--text);
+    color: #FFFFFF;
+    border-radius: 999px;
+    box-shadow: 0 6px 20px rgba(31, 41, 51, 0.3);
+    font-size: 0.82rem;
+}
+.undo-badge[hidden] { display: none; }
+.undo-badge button {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    color: #FFFFFF;
+    border-radius: 999px;
+    padding: 4px 14px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.undo-badge button:hover { background: rgba(255, 255, 255, 0.15); }
+
+@media (max-width: 600px) {
+    .scale-banner { font-size: 0.76rem; padding: 7px 10px; gap: 6px; }
+    .scale-banner-text { flex-basis: 100%; }
+    .undo-badge { bottom: calc(env(safe-area-inset-bottom, 0px) + 118px); font-size: 0.76rem; }
+}

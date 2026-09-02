@@ -50,9 +50,10 @@
             </button>
             <span class="step">① 動画</span>
             <span class="step">② スケール</span>
-            <span class="step">③ 原点</span>
-            <span class="step">④ トラッキング</span>
-            <span class="step">⑤ 出力</span>
+            <span class="step">③ トラッキング</span>
+            <span class="step">④ 提出</span>
+            <button class="warn-chip" id="scale-warn-chip" hidden
+                    title="スケールを設定すると cm で測れます">⚠ スケール未設定（px）</button>
         </nav>
 
         <!-- Main Workspace -->
@@ -137,10 +138,6 @@
                 <div class="panel">
                     <h2>設定 (キャリブレーション)</h2>
                     <div class="setup-grid">
-                        <button class="btn btn-secondary" id="btn-set-origin">
-                            <span class="material-icons-round">center_focus_strong</span>
-                            原点を設定
-                        </button>
                         <button class="btn btn-secondary" id="btn-set-scale">
                             <span class="material-icons-round">linear_scale</span>
                             スケール設定
@@ -153,7 +150,7 @@
                     <div class="calibration-info">
                         <div class="cal-row">
                             <span>原点:</span>
-                            <span id="info-origin">未設定</span>
+                            <span>最初の打点（自動）</span>
                         </div>
                         <div class="cal-row">
                             <span>スケール:</span>
@@ -304,11 +301,24 @@
 
         <!-- 下部固定アクションバー（親指で届く核操作） -->
         <div class="action-bar">
+            <!-- スケール設定ステップの帯。出ている間は「点を打つ」ボタンが消えるので、
+                 いま何をしているかを取り違えようがない -->
+            <div class="scale-banner" id="scale-banner" hidden>
+                <span class="scale-banner-badge">スケールを決めます</span>
+                <span class="scale-banner-step" id="scale-banner-step">1 / 2</span>
+                <span class="scale-banner-text" id="scale-banner-text"></span>
+                <button class="scale-banner-skip" id="scale-banner-skip">スケールなしで進む</button>
+            </div>
             <div class="action-hint" id="action-hint">十字を対象に合わせて「確定」</div>
             <div class="action-buttons">
                 <button class="btn-icon btn-jog" id="btn-undo" title="直前の操作を取り消す" disabled>
                     <span class="material-icons-round">undo</span>
                     <span class="jog-label">取消</span>
+                </button>
+                <!-- スケール設定ステップのときだけ出る（CSSで切替） -->
+                <button class="btn btn-secondary btn-scale-redo" id="btn-scale-redo">
+                    <span class="material-icons-round">restart_alt</span>
+                    やり直す
                 </button>
                 <button class="btn-icon btn-jog" id="btn-prev-10" title="10コマ戻る">
                     <span class="material-icons-round">fast_rewind</span>
@@ -437,6 +447,12 @@
         </defs></svg>
     </div>
 
+    <!-- 操作を止めない通知（前回データの破棄など） -->
+    <div class="undo-badge" id="undo-badge" hidden>
+        <span id="undo-badge-text"></span>
+        <button id="undo-badge-action">戻す</button>
+    </div>
+
     <!-- Hidden Video Element for background playing & frame capturing -->
     <video id="hidden-video" style="display: none;" playsinline muted></video>
 
@@ -444,6 +460,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-08-31b"></script>
+    <script src="app.js?v=2026-09-02b"></script>
 </body>
 </html>
