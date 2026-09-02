@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-02a';
+const APP_VERSION = '2026-09-02b';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -2304,8 +2304,14 @@ function updateScaleBanner() {
             }
         }
     }
+    // 警告チップは「どう抜けたか」に関係なく、スケールが無い間ずっと出す。
+    // 帯のリンクで抜けても、[スケール設定]をもう一度押して抜けても同じ。
+    // 抜け道が2本あって片方だけ黙っている、という状態を作らないため。
     const warn = document.getElementById('scale-warn-chip');
-    if (warn) warn.hidden = !(appState.scaleSkipped && !appState.calibration.scaleRatio);
+    if (warn) {
+        const hasVideo = !!(appState.videoElement && appState.videoElement.src);
+        warn.hidden = !(hasVideo && !appState.calibration.scaleRatio && !scaleStepActive());
+    }
     const bar = document.querySelector('.action-bar');
     if (bar) bar.classList.toggle('scale-step', scaleStepActive());
 }
@@ -2335,6 +2341,7 @@ function updateStepGuide() {
     if (hasVideo && hasData && hasScale) active = 3;
 
     steps.forEach((el, i) => el.classList.toggle('active', i === active));
+    if (typeof updateScaleBanner === 'function') updateScaleBanner();
 }
 
 function setupModeButtons() {
@@ -4290,6 +4297,7 @@ async function composeReport(target, strobeCanvas, verify) {
         ctx.strokeStyle = UI_COLORS.grid;
         ctx.lineWidth = 2;
         ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+        drawSlopeChip(ctx, b, b.type, kin, unit);
     }
     GRAPH_SCALE = 1;
 
@@ -4314,6 +4322,48 @@ async function composeReport(target, strobeCanvas, verify) {
         REPORT_W - pad - 26, fy + 40);
     ctx.fillText(`v${APP_VERSION}`, REPORT_W - pad - 26, fy + 74);
     ctx.textAlign = 'left';
+}
+
+// 速度－時刻グラフには、全区間の傾き（＝平均加速度）と R² をその場に印字する。
+// 授業の成果は「重力加速度の大きさを求める」ことなので、提出物の中に数値が
+// 無いと、生徒が画面から書き写す一手間が増えるし、班ごとの比較もしにくい。
+const SLOPE_CHIP_TYPES = { 'vy-t': 'vy', 'vx-t': 'vx', 'v-t': '速さ' };
+function drawSlopeChip(ctx, box, type, kin, unit) {
+    if (!SLOPE_CHIP_TYPES[type]) return;
+    const series = graphSeriesFor(type, kin, unit);
+    const idx = series.xv.map((_, i) => i)
+        .filter(i => Number.isFinite(series.xv[i]) && Number.isFinite(series.yv[i]));
+    if (idx.length < 3) return;
+    const xs = idx.map(i => series.xv[i]), ys = idx.map(i => series.yv[i]);
+    const slope = slopeOf(xs, ys);
+    if (slope === null) return;
+
+    const lines = [`傾き ${fmtSig3(slope)} ${unit}/s²  ＝ 平均加速度`];
+    // cm で測っていれば m/s² も添える（板書の g = 9.8 m/s² と直接見比べられる）
+    if (unit === 'cm') lines.push(`= ${fmtSig3(slope / 100)} m/s²    R² = ${r2Of(xs, ys)}`);
+    else lines.push(`R² = ${r2Of(xs, ys)}`);
+
+    const fs = 20;
+    const pad = 10;
+    ctx.save();
+    ctx.font = `bold ${fs}px ${FONT_SANS}`;
+    const w = Math.max(...lines.map(t => ctx.measureText(t).width)) + pad * 2;
+    const h = fs * lines.length * 1.35 + pad * 1.6;
+    const x = box.x + box.w - w - 10, y = box.y + 10;
+    roundRectPath(ctx, x, y, w, h, 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    ctx.fill();
+    ctx.strokeStyle = UI_COLORS.accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    lines.forEach((t, i) => {
+        ctx.fillStyle = i === 0 ? UI_COLORS.accentStrong || UI_COLORS.text : UI_COLORS.textSub;
+        ctx.font = i === 0 ? `bold ${fs}px ${FONT_SANS}` : `${fs * 0.92}px ${FONT_SANS}`;
+        ctx.fillText(t, x + pad, y + pad * 0.8 + i * fs * 1.35);
+    });
+    ctx.restore();
 }
 
 function reportDateText() {
@@ -4528,39 +4578,6 @@ function showInputDialog(title, bodyText, defaultValue, onOk) {
     });
 }
 
-// 確認専用ダイアログ（入力欄なし、OK/キャンセルのコールバックのみ）
-function showConfirmDialog(title, bodyText, onOk, onCancel) {
-    const overlay = document.getElementById('dialog-overlay');
-    const titleEl = document.getElementById('dialog-title');
-    const bodyEl = document.getElementById('dialog-body');
-    const btnCancel = document.getElementById('dialog-btn-cancel');
-    const btnOk = document.getElementById('dialog-btn-ok');
-
-    if (!overlay) return;
-
-    titleEl.textContent = title;
-    bodyEl.innerHTML = `<p>${bodyText}</p>`;
-
-    overlay.style.display = 'flex';
-
-    const cleanup = () => {
-        overlay.style.display = 'none';
-        const newOk = btnOk.cloneNode(true);
-        const newCancel = btnCancel.cloneNode(true);
-        btnOk.parentNode.replaceChild(newOk, btnOk);
-        btnCancel.parentNode.replaceChild(newCancel, btnCancel);
-    };
-
-    document.getElementById('dialog-btn-ok').addEventListener('click', () => {
-        cleanup();
-        if (onOk) onOk();
-    });
-
-    document.getElementById('dialog-btn-cancel').addEventListener('click', () => {
-        cleanup();
-        if (onCancel) onCancel();
-    });
-}
 
 // --- Node.js テスト用および統合テスト用エクスポート ---
 // 内部状態をテストから差し替えるヘルパ（node・ブラウザ両方で使う）
