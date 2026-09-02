@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-08-31b';
+const APP_VERSION = '2026-09-02a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -50,6 +50,7 @@ const appState = {
     physicsFpsMultiplier: 1,
     slowMotionCaptureFps: null, // ユーザーが入力した「実際の撮影fps」。未設定ならnull
     rawKinematics: false, // true=速度・加速度のスムージングを無効化し従来の厳密差分を使う
+    scaleSkipped: false,  // 「スケールなしで進む」を選んだか（px単位のまま続行）
     motionMode: null      // 'free-fall' | 'vertical-throw' | 'projectile' | 'oblique'（起動時に選ぶ）
 };
 
@@ -68,11 +69,11 @@ const MOTION_MODES = {
     },
     'projectile': {
         label: '水平投射', ySign: -1, xSign: 1,
-        axisText: '下向き・右向きが正', graphs: ['y-x', 'vx-t', 'vy-t']
+        axisText: '下向き・右向きが正', graphs: ['x-t', 'y-t', 'vx-t', 'vy-t']
     },
     'oblique': {
         label: '斜方投射', ySign: 1, xSign: 1,
-        axisText: '上向き・右向きが正', graphs: ['y-x', 'vx-t', 'vy-t']
+        axisText: '上向き・右向きが正', graphs: ['x-t', 'y-t', 'vx-t', 'vy-t']
     }
 };
 const MOTION_MODE_KEY = 'tracker_for_ipad_motion_mode_v1';
@@ -243,7 +244,7 @@ function buildDebugReport() {
             + ` / fps=${s.videoFps}${s.fpsMeasured ? '' : '*'} / 時刻表=${s.frameTimes.length}件`,
         `コマ: ${s.currentFrame} / ${s.totalFrames}（範囲 ${s.rangeIn}–${s.rangeOut}）`,
         `打点: ${s.trackingData.length}点 / 物体${s.activeObjectId} / ステップ幅${s.trackingStepSize}`,
-        `校正: 原点=${s.calibration.origin ? '設定済' : '未'} / スケール=${s.calibration.scaleRatio ? s.calibration.scaleRatio.toFixed(4) + 'cm/px' : '未'}`
+        `校正: スケール=${s.calibration.scaleRatio ? s.calibration.scaleRatio.toFixed(4) + 'cm/px' : '未設定'} / 原点=最初の打点(自動)`
             + ` / スロー=${s.slowMotionCaptureFps ? s.slowMotionCaptureFps + 'fps' : 'なし'}`,
         `内部: seekBusy=${seekBusy} pending=${seekPendingFrame} flipTarget=${flipTarget}`
             + ` readyState=${s.videoElement ? s.videoElement.readyState : '-'}`,
@@ -381,6 +382,7 @@ function hasSavedTracking() {
 // 新しい動画を読み込む直前に呼ぶ：前回の計測データ・校正・Undo履歴・選択状態を
 // 全リセットする（「前回データの中途半端な干渉」対策）。表示も同期する。
 function resetForNewVideo() {
+    appState.scaleSkipped = false;
     appState.trackingData = [];
     appState.calibration = {
         origin: null,
@@ -412,53 +414,76 @@ function persistedFingerprintMatches(obj) {
         && obj.trackingData.length > 0;
 }
 
-// 動画の指紋が前回保存データと一致する場合のみ「復元しますか？」を提案する。
-// 一致しない場合は黙って古いデータを破棄する（中途半端な干渉を残さないため）。
-function offerRestoreIfMatching() {
+// 前回データは「破棄が既定」。動画を読み込んだ時点で黙って捨て、直後に数秒だけ
+// 「戻す」を出す。確認ダイアログにすると、後から出るトリミング窓に上書きされて
+// 操作できなくなる（実際に起きた不具合）うえ、毎回手が止まる。
+// 戻せるのは、同じ動画（名前・サイズ・長さが一致）のときだけ。
+let discardedState = null;
+function discardPreviousState() {
+    discardedState = null;
     let obj = null;
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
         obj = JSON.parse(raw);
     } catch (e) { return; }
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* 無視 */ }
+    if (!obj || !persistedFingerprintMatches(obj)) return;
+    discardedState = obj;   // 同じ動画のときだけ復帰候補として覚えておく
+}
+
+function offerUndoDiscard() {
+    const obj = discardedState;
     if (!obj) return;
+    const n = obj.trackingData.length;
+    showUndoBadge(`前回の${n}点を破棄しました`, '戻す', () => {
+        appState.trackingData = obj.trackingData;
+        if (obj.calibration) appState.calibration = obj.calibration;
+        if (obj.videoFps) appState.videoFps = obj.videoFps;
+        if (obj.trackingStepSize) appState.trackingStepSize = obj.trackingStepSize;
+        if (obj.activeObjectId) appState.activeObjectId = obj.activeObjectId;
+        if (obj.physicsFpsMultiplier) appState.physicsFpsMultiplier = obj.physicsFpsMultiplier;
+        if (obj.slowMotionCaptureFps) appState.slowMotionCaptureFps = obj.slowMotionCaptureFps;
+        if (obj.motionMode && MOTION_MODES[obj.motionMode]) setMotionMode(obj.motionMode, false);
+        discardedState = null;
+        if (appState.calibration.scaleRatio) setPendingCapture(null);
+        updateDataTable();
+        updateGraph();
+        refreshCalibrationLabels();
+        updateUndoButton();
+        updateScaleBanner();
+        drawVideoFrame();
+        persistState();
+        logDebug(`前回の${n}点を復元しました。`);
+    });
+}
 
-    if (!persistedFingerprintMatches(obj)) {
-        try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* 無視 */ }
-        return;
+// 画面隅に数秒だけ出る、操作を止めない通知（ダイアログの代わり）
+let undoBadgeTimer = null;
+function showUndoBadge(text, actionLabel, onAction) {
+    const el = document.getElementById('undo-badge');
+    if (!el) return;
+    const label = document.getElementById('undo-badge-text');
+    const btn = document.getElementById('undo-badge-action');
+    if (label) label.textContent = text;
+    if (btn) {
+        btn.textContent = actionLabel;
+        const fresh = btn.cloneNode(true);
+        btn.parentNode.replaceChild(fresh, btn);
+        fresh.addEventListener('click', () => { hideUndoBadge(); onAction(); });
     }
-
-    showConfirmDialog(
-        "前回の計測データを復元しますか？",
-        `同じ動画（${appState.videoName}）の前回の計測データが見つかりました。復元しますか？`,
-        () => {
-            appState.trackingData = obj.trackingData;
-            if (obj.calibration) appState.calibration = obj.calibration;
-            if (obj.videoFps) appState.videoFps = obj.videoFps;
-            if (obj.trackingStepSize) appState.trackingStepSize = obj.trackingStepSize;
-            if (obj.activeObjectId) appState.activeObjectId = obj.activeObjectId;
-            if (obj.physicsFpsMultiplier) appState.physicsFpsMultiplier = obj.physicsFpsMultiplier;
-            if (obj.slowMotionCaptureFps) appState.slowMotionCaptureFps = obj.slowMotionCaptureFps;
-            // 運動の種類も一緒に戻す（グラフの選択は生徒がいじった状態を尊重して触らない）
-            if (obj.motionMode && MOTION_MODES[obj.motionMode]) setMotionMode(obj.motionMode, false);
-            updateDataTable();
-            updateGraph();
-            refreshCalibrationLabels();
-            updateUndoButton();
-            logDebug("前回の計測データを復元しました。");
-        },
-        () => {
-            try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* 無視 */ }
-            logDebug("前回データの復元を見送り、破棄しました。");
-        }
-    );
+    el.hidden = false;
+    if (undoBadgeTimer) clearTimeout(undoBadgeTimer);
+    undoBadgeTimer = setTimeout(hideUndoBadge, 9000);
+}
+function hideUndoBadge() {
+    const el = document.getElementById('undo-badge');
+    if (el) el.hidden = true;
+    if (undoBadgeTimer) { clearTimeout(undoBadgeTimer); undoBadgeTimer = null; }
 }
 
 // 校正ラベル（原点/スケール/スロー表示）を現在の状態に同期
 function refreshCalibrationLabels() {
-    const o = appState.calibration.origin;
-    const infoO = document.getElementById('info-origin');
-    if (infoO) infoO.textContent = o ? `(${o.x.toFixed(0)}, ${o.y.toFixed(0)})` : '未設定';
     const infoS = document.getElementById('info-scale');
     if (infoS) infoS.textContent = appState.calibration.scaleRatio ? `${appState.calibration.scaleRatio.toFixed(3)} cm/px` : '未設定';
     const infoM = document.getElementById('info-slowmo');
@@ -502,13 +527,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupFpsInput();
     setupSlowMotionUI();
     setupModePanel();
+    setupScaleBanner();
 
     // ウィンドウリサイズ時の処理
     window.addEventListener('resize', handleResize);
     window.addEventListener('resize', updateGraph);
 
-    // 起動時の無条件復帰は廃止。動画読込時にフィンガープリントが一致した場合のみ
-    // offerRestoreIfMatching() が復元を提案する（setupFileUpload / setupSampleLoad 参照）。
+    // 起動時の無条件復帰は廃止。動画読込時に前回データは破棄し、同じ動画のときだけ
+    // 数秒間「戻す」を出す（discardPreviousState / offerUndoDiscard）。
     updateUndoButton();
     updateActionHint();
     updateStepGuide();
@@ -689,8 +715,8 @@ function setupFileUpload() {
         updateGraph();
         updateStepGuide();
 
-        // 動画の指紋(名前・サイズ・長さ)が前回保存データと一致する場合のみ復元を提案
-        offerRestoreIfMatching();
+        // 前回データは黙って破棄する（同じ動画なら、あとで「戻す」を数秒だけ出す）
+        discardPreviousState();
 
         // 読込直後に全フレームをシーク走査し、実フレーム時刻表＋重複除外を確定して先頭へ
         await startFrameScan();
@@ -698,6 +724,9 @@ function setupFileUpload() {
         // 読み込み完了ダイアログ（コマ数の提示＋前後カット）。閉じた後に、
         // スロー撮影の痕跡を軽く探して必要ならスロー設定ダイアログを出す。
         showTrimDialog(async () => {
+            // 測定に入る前に必ずスケールを決めさせる（省略は帯の中の小さなリンクから）
+            if (needsScale()) enterScaleStep();
+            offerUndoDiscard();
             if (!appState.slowMotionCaptureFps) {
                 const hinted = await detectSlowMotionHint(appState.videoBlob);
                 const overlay = document.getElementById('dialog-overlay');
@@ -2188,12 +2217,12 @@ function setPendingCapture(mode) {
     // スケール設定を抜けるときは一時始点をクリア
     if (mode !== 'scale') appState.calibration.scaleTempStart = null;
 
-    const btnOrigin = document.getElementById('btn-set-origin');
     const btnScale = document.getElementById('btn-set-scale');
-    if (btnOrigin) btnOrigin.classList.toggle('active', mode === 'origin');
     if (btnScale) btnScale.classList.toggle('active', mode === 'scale');
+    document.body.classList.toggle('calibrating', mode === 'scale');
 
     updateActionHint();
+    if (typeof updateScaleBanner === 'function') updateScaleBanner();
     logDebug(`保留アクション: ${mode || 'なし（トラッキング）'}`);
 }
 
@@ -2206,10 +2235,7 @@ function updateActionHint() {
     let label = '確定<span class="confirm-sub">（点を打つ）</span>';
     let text = '十字を対象に合わせて「確定」';
 
-    if (appState.pendingCapture === 'origin') {
-        label = '<span class="confirm-sub">原点をここに</span>確定';
-        text = '十字を原点に合わせて「確定」';
-    } else if (appState.pendingCapture === 'scale') {
+    if (appState.pendingCapture === 'scale') {
         if (appState.calibration.scaleTempStart) {
             label = '<span class="confirm-sub">スケール終点を</span>確定';
             text = '十字を「既知の長さ」の終点に合わせて「確定」';
@@ -2225,36 +2251,99 @@ function updateActionHint() {
     if (hint) hint.textContent = text;
 }
 
+// --- ② スケール設定ステップ ---------------------------------------------
+// 「モード」ではなく「ステップ」として扱う。設定中は下部バーから
+// 「点を打つ」ボタン自体を消し、帯と枠の色も変える（手がかりを3つ同時に変える）。
+// 誤って別のモードだと思い込む余地をなくすのが狙い。
+function scaleStepActive() {
+    return appState.pendingCapture === 'scale';
+}
+
+function needsScale() {
+    return !appState.calibration.scaleRatio && !appState.scaleSkipped;
+}
+
+// 動画を読み込んで最初のトラッキングに入る前に、必ずここを通す
+function enterScaleStep() {
+    setPendingCapture('scale');
+    updateScaleBanner();
+}
+
+function skipScaleStep() {
+    appState.scaleSkipped = true;
+    setPendingCapture(null);
+    updateScaleBanner();
+    updateStepGuide();
+    showStepBadge('スケールなしで続けます（単位は px）');
+    logDebug('スケール設定を省略しました。長さの単位は px のままです。');
+}
+
+function restartScaleStep() {
+    appState.calibration.scaleTempStart = null;
+    updateActionHint();
+    updateScaleBanner();
+    drawVideoFrame();
+    logDebug('スケール設定をやり直します。');
+}
+
+// 帯の内容と、px単位で進んでいることを示す常設チップを同期する
+function updateScaleBanner() {
+    const banner = document.getElementById('scale-banner');
+    if (banner) {
+        const on = scaleStepActive();
+        banner.hidden = !on;
+        if (on) {
+            const second = !!appState.calibration.scaleTempStart;
+            const stepEl = document.getElementById('scale-banner-step');
+            const textEl = document.getElementById('scale-banner-text');
+            if (stepEl) stepEl.textContent = second ? '2 / 2' : '1 / 2';
+            if (textEl) {
+                textEl.textContent = second
+                    ? '十字を「もう一方の端」に合わせて確定してください。'
+                    : '長さが分かるもの（ものさし等）の片方の端に十字を合わせて確定してください。';
+            }
+        }
+    }
+    const warn = document.getElementById('scale-warn-chip');
+    if (warn) warn.hidden = !(appState.scaleSkipped && !appState.calibration.scaleRatio);
+    const bar = document.querySelector('.action-bar');
+    if (bar) bar.classList.toggle('scale-step', scaleStepActive());
+}
+
+function setupScaleBanner() {
+    const skip = document.getElementById('scale-banner-skip');
+    if (skip) skip.addEventListener('click', skipScaleStep);
+    const redo = document.getElementById('btn-scale-redo');
+    if (redo) redo.addEventListener('click', restartScaleStep);
+    const warn = document.getElementById('scale-warn-chip');
+    if (warn) warn.addEventListener('click', () => { appState.scaleSkipped = false; enterScaleStep(); });
+}
+
 // 手順ガイド: 今やるべき最初の未完ステップを点灯する
 function updateStepGuide() {
     const steps = document.querySelectorAll('.step-guide .step');
     if (!steps.length) return;
+    // ① 動画 → ② スケール → ③ トラッキング → ④ 提出（原点は最初の打点で自動）
     const hasVideo = !!(appState.videoElement && appState.videoElement.src);
-    const hasScale = !!appState.calibration.scaleRatio;
-    const hasOrigin = !!appState.calibration.origin;
+    const hasScale = !!(appState.calibration.scaleRatio || appState.scaleSkipped);
     const hasData = appState.trackingData.length > 0;
 
-    let active = 0;                 // ① 動画
-    if (hasVideo) active = 1;       // ② スケール
-    if (hasVideo && hasScale) active = 2;            // ③ 原点
-    if (hasVideo && hasScale && hasOrigin) active = 3; // ④ トラッキング
-    if (hasVideo && hasData) active = Math.max(active, 3);
-    if (hasVideo && hasData && hasScale && hasOrigin) active = 4; // ⑤ 出力（任意）
+    let active = 0;
+    if (hasVideo) active = 1;
+    if (hasVideo && hasScale) active = 2;
+    if (hasVideo && hasData) active = Math.max(active, 2);
+    if (hasVideo && hasData && hasScale) active = 3;
 
     steps.forEach((el, i) => el.classList.toggle('active', i === active));
 }
 
 function setupModeButtons() {
     const btnConfirm = document.getElementById('btn-confirm');
-    const btnOrigin = document.getElementById('btn-set-origin');
     const btnScale = document.getElementById('btn-set-scale');
     const btnZoomReset = document.getElementById('btn-zoom-reset');
 
     if (btnConfirm) btnConfirm.addEventListener('click', confirmAtCrosshair);
-    // 原点/スケールボタンはトグル: 押すと保留、もう一度押すとキャンセル
-    if (btnOrigin) btnOrigin.addEventListener('click', () => {
-        setPendingCapture(appState.pendingCapture === 'origin' ? null : 'origin');
-    });
+    // スケールボタンはトグル: 押すと設定ステップへ、もう一度押すと抜ける
     if (btnScale) btnScale.addEventListener('click', () => {
         setPendingCapture(appState.pendingCapture === 'scale' ? null : 'scale');
     });
@@ -2351,9 +2440,7 @@ function confirmAtCrosshair() {
         updateFrameLabel(shown);
     }
 
-    if (appState.pendingCapture === 'origin') {
-        captureOrigin(vPos);
-    } else if (appState.pendingCapture === 'scale') {
+    if (appState.pendingCapture === 'scale') {
         captureScalePoint(vPos);
     } else {
         captureTrackPoint(vPos);
@@ -2395,23 +2482,13 @@ function captureTrackPoint(vPos) {
     if (existingIndex < 0) stepFrame(appState.trackingStepSize, true);
 }
 
-function captureOrigin(vPos) {
-    appState.calibration.origin = { x: vPos.x, y: vPos.y };
-    logDebug(`原点を設定しました: X: ${vPos.x.toFixed(1)}, Y: ${vPos.y.toFixed(1)}`);
-    document.getElementById('info-origin').textContent = `(${vPos.x.toFixed(0)}, ${vPos.y.toFixed(0)})`;
-    setPendingCapture(null);
-    persistState();
-    updateDataTable();
-    drawVideoFrame();
-    updateGraph();
-}
-
 function captureScalePoint(vPos) {
     const cal = appState.calibration;
     if (!cal.scaleTempStart) {
         cal.scaleTempStart = { x: vPos.x, y: vPos.y };
         logDebug("スケール始点を設定。十字を終点に合わせて、もう一度「確定」してください。");
         updateActionHint();
+        updateScaleBanner();
         drawVideoFrame();
         return;
     }
@@ -2419,7 +2496,7 @@ function captureScalePoint(vPos) {
     const end = { x: vPos.x, y: vPos.y };
     const pixelDistance = Math.hypot(end.x - start.x, end.y - start.y);
 
-    showInputDialog("スケール設定", `2点間の距離は ${pixelDistance.toFixed(1)} px です。実際の物理的距離を入力してください (cm):`, "100", (val) => {
+    showInputDialog("スケール設定", `2点間の距離は ${pixelDistance.toFixed(1)} px です。実際の距離を入力してください (cm):`, "100", (val) => {
         const actualDist = parseFloat(val);
         if (!isNaN(actualDist) && actualDist > 0) {
             cal.scaleRatio = actualDist / pixelDistance;
@@ -2428,6 +2505,7 @@ function captureScalePoint(vPos) {
             cal.scaleActual = actualDist;
             logDebug(`スケール設定完了: ${cal.scaleRatio.toFixed(4)} cm/px (実寸: ${actualDist} cm)`);
             document.getElementById('info-scale').textContent = `${cal.scaleRatio.toFixed(3)} cm/px`;
+            appState.scaleSkipped = false;
             showStepBadge(`スケール ${actualDist} cm を設定`);
             persistState();
             updateDataTable();
@@ -2436,7 +2514,9 @@ function captureScalePoint(vPos) {
             logDebug("無効な距離が入力されました。");
         }
         cal.scaleTempStart = null;
-        setPendingCapture(null);
+        setPendingCapture(null);   // ここで自動的にトラッキングへ戻る
+        updateScaleBanner();
+        updateStepGuide();
         drawVideoFrame();
     });
 }
@@ -2718,9 +2798,13 @@ function drawTrackingPoints() {
 function drawCalibrationMarkers() {
     const scale = appState.viewState.scale;
     
-    // 原点描画
-    if (appState.calibration.origin) {
-        const localO = videoToLocalCanvas(appState.calibration.origin.x, appState.calibration.origin.y);
+    // 原点（＝この物体の最初の打点）を軸で示す。設定させない代わりに、
+    // 「どこが原点になっているか」は必ず目で確かめられるようにする。
+    const originPts = appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame));
+    if (originPts.length) {
+        const o = originOf(originPts);
+        const localO = videoToLocalCanvas(o.x, o.y);
         appState.ctx.beginPath();
         appState.ctx.moveTo(localO.x - 40 / scale, localO.y);
         appState.ctx.lineTo(localO.x + 40 / scale, localO.y);
@@ -2731,9 +2815,8 @@ function drawCalibrationMarkers() {
         appState.ctx.stroke();
 
         appState.ctx.fillStyle = UI_COLORS.calBright;
-        appState.ctx.font = `bold ${11 / scale}px ${FONT_SANS}`;
-        appState.ctx.fillText("x", localO.x + 45 / scale, localO.y + 4 / scale);
-        appState.ctx.fillText("y", localO.x - 4 / scale, localO.y - 45 / scale);
+        appState.ctx.font = `bold ${10 / scale}px ${FONT_SANS}`;
+        appState.ctx.fillText("原点", localO.x + 6 / scale, localO.y - 6 / scale);
     }
     
     // スケール描画
@@ -2878,11 +2961,12 @@ function updateDataTable() {
         return;
     }
     
+    const tableOrigin = originOf(filteredData);
     filteredData.forEach(p => {
         const tr = document.createElement('tr');
         
         // 原点・スケール・正の向きの適用はグラフや出力と同じ関数に任せる
-        const ph = physCoordOf(p);
+        const ph = physCoordOf(p, tableOrigin);
         const physX = ph.x, physY = ph.y;
         
         tr.innerHTML = `
@@ -3004,13 +3088,25 @@ window.deletePoint = deletePoint;
 
 // --- 物理座標・運動学（速度/加速度）の計算 --------------------------------
 // 動画ピクセル座標 → 原点基準・スケール適用済みの物理座標へ
+// 原点は「その物体の最初の打点」。生徒に原点を設定させないための自動化で、
+// 同時に符号バグの根治でもある（原点未設定のときだけ画面座標のまま符号を掛けて
+// しまい、自由落下なのに上が正になっていた）。原点は保存せず毎回ここで決めるので、
+// 最初の点を打ち直せば原点も自動で追随する。
+function originOf(sortedData) {
+    if (!sortedData || !sortedData.length) return { x: 0, y: 0 };
+    let first = sortedData[0];
+    for (const p of sortedData) if (p.frame < first.frame) first = p;
+    return { x: first.x, y: first.y };
+}
+
 // 正の向きは運動の種類で決まる（自由落下なら下が正、投げ上げなら上が正…）。
 // 符号は表示上の変換なので、あとからモードを変えても打点データはそのまま使える。
-function physCoordOf(p) {
+function physCoordOf(p, origin) {
     const m = currentMode();
-    let x = p.x, y = p.y;
+    const o = origin || { x: 0, y: 0 };
+    let x = p.x - o.x;
+    let y = o.y - p.y;                       // ここで必ず「上が正」に揃える
     const cal = appState.calibration;
-    if (cal.origin) { x = p.x - cal.origin.x; y = cal.origin.y - p.y; }
     if (cal.scaleRatio) { x *= cal.scaleRatio; y *= cal.scaleRatio; }
     return { x: x * m.xSign, y: y * m.ySign, t: p.time, frame: p.frame, id: p.id };
 }
@@ -3095,7 +3191,8 @@ function accelEdgeDrop(n, smoothed) {
 // 時だけderivExactに切り替える（精度検証や上級者向け）。
 function computeKinematics(sortedData, smoothedOverride) {
     const smoothed = (smoothedOverride !== undefined) ? smoothedOverride : !appState.rawKinematics;
-    const pts = sortedData.map(physCoordOf);
+    const origin = originOf(sortedData);
+    const pts = sortedData.map(p => physCoordOf(p, origin));
     const n = pts.length;
     const t = pts.map(p => p.t);
     const deriv = smoothed
@@ -3175,7 +3272,7 @@ function setupGraphEvents() {
     // 運動の種類に合わせたグラフのプリセット（チェックを一括切替するだけの近道）
     const PRESETS = {
         fall:       ['y-t', 'vy-t'],               // 自由落下・鉛直投げ上げ
-        projectile: ['y-x', 'vx-t', 'vy-t']        // 水平投射・斜方投射
+        projectile: ['x-t', 'y-t', 'vx-t', 'vy-t'] // 水平投射・斜方投射
     };
     document.querySelectorAll('#graph-presets .preset-btn').forEach(btn => {
         btn.addEventListener('click', () => applyGraphTypes(PRESETS[btn.dataset.preset]));
@@ -3291,6 +3388,10 @@ function updateGraph() {
     });
 }
 
+// 画面用は等倍。提出用レポート（高解像度）では倍率を上げて、文字と線が
+// 縮小されて潰れないようにする。composeReport が一時的に切り替える。
+let GRAPH_SCALE = 1;
+
 // グラフ1枚を canvas に描画。当たり判定座標は cv._plotPoints に保持。
 function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     // 親要素のサイズに Canvas の物理解像度をフィットさせる
@@ -3307,7 +3408,7 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
 
     if (!data || data.length === 0) {
         gCtx.fillStyle = UI_COLORS.textSub;
-        gCtx.font = `11px ${FONT_SANS}`;
+        gCtx.font = `${11 * GRAPH_SCALE}px ${FONT_SANS}`;
         gCtx.textAlign = 'center';
         gCtx.textBaseline = 'middle';
         gCtx.fillText("測定が開始されると自動で描画されます", graphCanvas.width / 2, graphCanvas.height / 2);
@@ -3324,7 +3425,7 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         .filter(i => Number.isFinite(valX[i]) && Number.isFinite(valY[i]));
     if (idxs.length === 0) {
         gCtx.fillStyle = UI_COLORS.textSub;
-        gCtx.font = `11px ${FONT_SANS}`;
+        gCtx.font = `${11 * GRAPH_SCALE}px ${FONT_SANS}`;
         gCtx.textAlign = 'center';
         gCtx.textBaseline = 'middle';
         gCtx.fillText("加速度を出すには点がもう少し必要です", graphCanvas.width / 2, graphCanvas.height / 2);
@@ -3345,11 +3446,12 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
     if (maxX === minX) { maxX += 1; minX -= 1; }
     if (maxY === minY) { maxY += 1; minY -= 1; }
 
-    // マージン
-    const padL = 35;
-    const padR = 15;
-    const padT = 15;
-    const padB = 22;
+    // マージン（レポート出力時は GRAPH_SCALE 倍で描き、文字が潰れないようにする）
+    const gs = GRAPH_SCALE;
+    const padL = 35 * gs;
+    const padR = 15 * gs;
+    const padT = 15 * gs;
+    const padB = 22 * gs;
 
     const plotW = graphCanvas.width - padL - padR;
     const plotH = graphCanvas.height - padT - padB;
@@ -3382,9 +3484,9 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         gCtx.stroke();
         
         gCtx.fillStyle = UI_COLORS.textSub;
-        gCtx.font = `8px ${FONT_MONO}`;
+        gCtx.font = `${8 * gs}px ${FONT_MONO}`;
         gCtx.textAlign = 'center';
-        gCtx.fillText(val.toFixed(2), cx, padT + plotH + 11);
+        gCtx.fillText(val.toFixed(2), cx, padT + plotH + 11 * gs);
     }
     
     // Y軸の補助線と目盛りラベル
@@ -3400,9 +3502,9 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         gCtx.stroke();
         
         gCtx.fillStyle = UI_COLORS.textSub;
-        gCtx.font = `8px ${FONT_MONO}`;
+        gCtx.font = `${8 * gs}px ${FONT_MONO}`;
         gCtx.textAlign = 'right';
-        gCtx.fillText(val.toFixed(1), padL - 5, cy + 3);
+        gCtx.fillText(val.toFixed(1), padL - 5 * gs, cy + 3 * gs);
     }
     
     // 主軸線
@@ -3420,33 +3522,33 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         const zeroY = toCanvasY(0);
         gCtx.save();
         gCtx.strokeStyle = UI_COLORS.text;
-        gCtx.lineWidth = 1.6;
+        gCtx.lineWidth = 1.6 * gs;
         gCtx.beginPath();
         gCtx.moveTo(padL, zeroY);
         gCtx.lineTo(padL + plotW, zeroY);
         gCtx.stroke();
         // 目盛りラベルと重ならないよう、プロットの内側に白フチ付きで置く
-        gCtx.font = `bold 8px ${FONT_MONO}`;
+        gCtx.font = `bold ${8 * gs}px ${FONT_MONO}`;
         gCtx.textAlign = 'left';
-        gCtx.lineWidth = 3;
+        gCtx.lineWidth = 3 * gs;
         gCtx.strokeStyle = UI_COLORS.surface;
-        gCtx.strokeText('0', padL + 3, zeroY - 3);
+        gCtx.strokeText('0', padL + 3 * gs, zeroY - 3 * gs);
         gCtx.fillStyle = UI_COLORS.text;
-        gCtx.fillText('0', padL + 3, zeroY - 3);
+        gCtx.fillText('0', padL + 3 * gs, zeroY - 3 * gs);
         gCtx.restore();
     }
     
     // 軸名ラベルの描画
     gCtx.fillStyle = UI_COLORS.textSub;
-    gCtx.font = `8px ${FONT_SANS}`;
+    gCtx.font = `${8 * gs}px ${FONT_SANS}`;
     gCtx.textAlign = 'right';
-    gCtx.fillText(labelX, graphCanvas.width - 4, graphCanvas.height - 4);
+    gCtx.fillText(labelX, graphCanvas.width - 4 * gs, graphCanvas.height - 4 * gs);
     gCtx.textAlign = 'left';
-    gCtx.fillText(labelY, 4, 8);
+    gCtx.fillText(labelY, 4 * gs, 8 * gs);
     
     // 線グラフ描画
     gCtx.strokeStyle = COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
-    gCtx.lineWidth = 1.8;
+    gCtx.lineWidth = 1.8 * gs;
     gCtx.beginPath();
     
     idxs.forEach((idx, k) => {
@@ -3469,11 +3571,11 @@ function drawOneGraph(graphCanvas, graphType, data, kin, unit) {
         gCtx.beginPath();
         // 選択されたポイントはプロット上でも大きく＆アンバーで強調（三者連動）
         const isSel = (data[idx].id === appState.selectedPointId);
-        gCtx.arc(cx, cy, isSel ? 5.0 : 3.0, 0, Math.PI * 2);
+        gCtx.arc(cx, cy, (isSel ? 5.0 : 3.0) * gs, 0, Math.PI * 2);
         gCtx.fillStyle = isSel ? UI_COLORS.accent : COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
         gCtx.fill();
         gCtx.strokeStyle = isSel ? UI_COLORS.accent : UI_COLORS.surface;
-        gCtx.lineWidth = isSel ? 2 : 1;
+        gCtx.lineWidth = (isSel ? 2 : 1) * gs;
         gCtx.stroke();
     });
 
@@ -3678,6 +3780,106 @@ function openGraphDialog(graphType) {
     requestAnimationFrame(redraw);
 }
 
+// --- 照合コード（提出物の取り違え・使い回しの検出） ---------------------
+// 「打った点そのもの」からハッシュを作る。動画が同じでも、タップした座標は
+// 人によって必ず違うので、コードが一致する＝同じ打点データを使った、と言える。
+// スケールを引き直してもコードは変わらない（校正のやり直しで慌てさせないため）。
+// 防止ではなく検出であることに注意: 画像をそのまま転送されれば同じコードが出るので、
+// 教員側は「同じコードが2人から出た」ことで気づける。
+function trackingSignatureSource() {
+    const pts = appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame))
+        .sort((a, b) => a.frame - b.frame)
+        .map(p => `${p.frame}:${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+    // 動画のファイル名・サイズも混ぜる（別の動画なら別のコードになる）
+    return [`v1`, appState.videoName || '', appState.videoSize || 0, ...pts].join('|');
+}
+
+// SHA-256 の先頭40bitを、読み間違えにくい文字だけの8桁に畳む。
+// 紛らわしい 0/O/1/I/L は使わない（生徒が目で書き写す前提）。
+const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+async function computeVerificationCode() {
+    const src = trackingSignatureSource();
+    const buf = new TextEncoder().encode(src);
+    let hex;
+    if (window.crypto && window.crypto.subtle) {
+        const digest = await window.crypto.subtle.digest('SHA-256', buf);
+        hex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+    } else {
+        hex = fallbackHashHex(src);   // 古い端末・http接続でも動くように
+    }
+    let n = BigInt('0x' + hex.slice(0, 12));   // 先頭48bit
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+        code = CODE_ALPHABET[Number(n % 31n)] + code;
+        n /= 31n;
+    }
+    return { code: code.slice(0, 4) + '-' + code.slice(4), hex, points: appState.trackingData.length };
+}
+
+// Web Crypto が使えない環境（file:// や古い端末）向けの代替。
+// 暗号強度は無いが、偶然の一致を避ける用途には足りる。
+function fallbackHashHex(str) {
+    let h1 = 0x811c9dc5, h2 = 0x01000193, h3 = 0x9e3779b9, h4 = 0x85ebca6b;
+    for (let i = 0; i < str.length; i++) {
+        const c = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+        h2 = Math.imul(h2 + c, 2246822519) >>> 0;
+        h3 = Math.imul(h3 ^ (c + i), 3266489917) >>> 0;
+        h4 = Math.imul(h4 + (c * (i + 1)), 668265263) >>> 0;
+    }
+    return [h1, h2, h3, h4].map(v => v.toString(16).padStart(8, '0')).join('');
+}
+
+// --- PNG に文字列メタデータ(tEXt)を差し込む -----------------------------
+// PNG は「長さ・型・データ・CRC」のチャンクの並び。IHDR の直後に tEXt を足せば、
+// 画像の見た目を変えずに検証用の情報を持たせられる。ExifTool や Python の
+// Pillow で読めるので、教員側は一括チェックできる。
+const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+    }
+    return t;
+})();
+function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function pngTextChunk(keyword, text) {
+    const key = new TextEncoder().encode(keyword);
+    const val = new TextEncoder().encode(text);
+    const data = new Uint8Array(key.length + 1 + val.length);
+    data.set(key, 0); data[key.length] = 0; data.set(val, key.length + 1);
+    const type = new TextEncoder().encode('tEXt');
+    const out = new Uint8Array(12 + data.length);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(0, data.length);
+    out.set(type, 4);
+    out.set(data, 8);
+    const crcSrc = new Uint8Array(4 + data.length);
+    crcSrc.set(type, 0); crcSrc.set(data, 4);
+    dv.setUint32(8 + data.length, crc32(crcSrc));
+    return out;
+}
+async function pngWithMetadata(blob, entries) {
+    const src = new Uint8Array(await blob.arrayBuffer());
+    // 署名8バイト + IHDR(長さ4+型4+データ13+CRC4 = 25) の直後に差し込む
+    const insertAt = 8 + 25;
+    if (src.length < insertAt || src[1] !== 0x50 || src[2] !== 0x4E) return blob;
+    const chunks = Object.entries(entries).map(([k, v]) => pngTextChunk(k, String(v)));
+    const extra = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(src.length + extra);
+    out.set(src.subarray(0, insertAt), 0);
+    let off = insertAt;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    out.set(src.subarray(insertAt), off);
+    return new Blob([out], { type: 'image/png' });
+}
+
 // --- エクスポート ---
 // 全物体について 位置・速度・加速度 を計算した行列を作る
 function buildExportTable() {
@@ -3817,6 +4019,90 @@ function strobePoints(everyN) {
     return out;
 }
 
+// 投げ上げモードのときだけ、各点が「上昇中(vy>0)」か「下降中(vy<0)」かを返す。
+// 色は Okabe-Ito 系で、色覚多様性でも分離する組み合わせ（マゼンタ / 青）。
+const STROBE_UP_COLOR = '#D81B8C';    // 上昇中
+const STROBE_DOWN_COLOR = '#0072B2';  // 下降中
+function strobePhaseInfo(pts) {
+    if (appState.motionMode !== 'vertical-throw') return null;
+    const data = appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame))
+        .sort((a, b) => a.frame - b.frame);
+    if (data.length < 3) return null;
+    const kin = computeKinematics(data);
+    const vyByFrame = new Map(kin.map(k => [k.frame, k.vy]));
+    const vy = pts.map(p => vyByFrame.has(p.frame) ? vyByFrame.get(p.frame) : 0);
+    // 符号が入れ替わる境目＝最高点。境目の手前側の点を印の対象にする
+    let apex = -1;
+    for (let i = 1; i < vy.length; i++) {
+        if (vy[i - 1] > 0 && vy[i] <= 0) { apex = Math.abs(vy[i - 1]) <= Math.abs(vy[i]) ? i - 1 : i; break; }
+    }
+    return {
+        colorAt: (i) => (vy[i] > 0 ? STROBE_UP_COLOR : STROBE_DOWN_COLOR),
+        apex, vy
+    };
+}
+
+// 画像単体で意味が通るように、上昇/下降の凡例を焼き込む
+function drawPhaseLegend(ctx, canvas, r) {
+    const fs = Math.max(14, Math.round(canvas.width * 0.026));
+    const pad = Math.round(fs * 0.6);
+    const dot = fs * 0.46;
+    ctx.save();
+    ctx.font = `bold ${fs}px ${FONT_SANS}`;
+    const t1 = '上昇中', t2 = '下降中';
+    const w = pad * 2 + dot * 2 + 8 + ctx.measureText(t1).width
+            + pad + dot * 2 + 8 + ctx.measureText(t2).width;
+    const h = fs + pad * 2;
+    const x = pad, y = pad;
+    roundRectPath(ctx, x, y, w, h, h / 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(31,41,51,0.3)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const cy = y + h / 2;
+    let cx = x + pad + dot;
+    ctx.beginPath(); ctx.arc(cx, cy, dot, 0, Math.PI * 2);
+    ctx.fillStyle = STROBE_UP_COLOR; ctx.fill();
+    ctx.fillStyle = '#1F2933';
+    ctx.fillText(t1, cx + dot + 8, cy);
+    cx += dot + 8 + ctx.measureText(t1).width + pad + dot;
+    ctx.beginPath(); ctx.arc(cx, cy, dot * 0.72, 0, Math.PI * 2);
+    ctx.lineWidth = dot * 0.56; ctx.strokeStyle = STROBE_DOWN_COLOR; ctx.stroke();
+    ctx.fillStyle = '#1F2933';
+    ctx.fillText(t2, cx + dot + 8, cy);
+    ctx.restore();
+}
+
+function drawApexMark(ctx, pts, phase, s, r) {
+    if (phase.apex < 0) return;
+    const p = pts[phase.apex];
+    const x = p.x * s, y = p.y * s;
+    const fs = Math.max(13, r * 0.5);
+    ctx.save();
+    ctx.font = `bold ${fs}px ${FONT_SANS}`;
+    ctx.textBaseline = 'middle';
+    const label = '最高点';
+    const w = ctx.measureText(label).width + fs * 0.8;
+    const h = fs * 1.6;
+    const bx = x + r + fs * 0.4, by = y - h / 2;
+    roundRectPath(ctx, bx, by, w, h, h / 2);
+    ctx.fillStyle = 'rgba(31,41,51,0.88)';
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, bx + w / 2, y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = Math.max(2, r * 0.06);
+    ctx.beginPath();
+    ctx.moveTo(x + r * 0.4, y); ctx.lineTo(bx, y);
+    ctx.stroke();
+    ctx.restore();
+}
+
 async function generateStrobe(canvas, everyN, radius, onProgress, mode) {
     const v = appState.videoElement;
     const pts = strobePoints(everyN);
@@ -3836,20 +4122,44 @@ async function generateStrobe(canvas, everyN, radius, onProgress, mode) {
         await getFrameAt(v, seekTimeOf(pts[0].frame));
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
 
+        const phase = strobePhaseInfo(pts);   // 投げ上げのときだけ上昇/下降を返す
         if (mode === 'dots') {
             // 点マーカーモード: 映像は基準フレームのまま、認識した点だけを
             // 物体色の丸で打つ（散布図風。シーク不要なので一瞬で終わる）
             const r = Math.max(4, radius * s * 0.2);
-            const color = COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
-            pts.forEach(p => {
-                ctx.beginPath();
-                ctx.arc(p.x * s, p.y * s, r, 0, Math.PI * 2);
-                ctx.fillStyle = color;
-                ctx.fill();
-                ctx.lineWidth = Math.max(1.5, r * 0.25);
-                ctx.strokeStyle = '#FFFFFF';
-                ctx.stroke();
-            });
+            const ring = Math.max(1.5, r * 0.25);
+            if (!phase) {
+                const color = COLOR_MAP[(appState.activeObjectId - 1) % COLOR_MAP.length];
+                pts.forEach(p => {
+                    ctx.beginPath();
+                    ctx.arc(p.x * s, p.y * s, r, 0, Math.PI * 2);
+                    ctx.fillStyle = color; ctx.fill();
+                    ctx.lineWidth = ring; ctx.strokeStyle = '#FFFFFF'; ctx.stroke();
+                });
+            } else {
+                // 投げ上げは同じ高さを上りと下りで2回通る。塗りつぶし同士だと
+                // 後から描いた方が完全に隠してしまうので、下降は「中空の輪」にする。
+                // 重なった場所では、マゼンタの芯＋青い輪 として両方が読み取れる。
+                pts.forEach((p, i) => {
+                    if (phase.vy[i] <= 0) return;
+                    ctx.beginPath();
+                    ctx.arc(p.x * s, p.y * s, r, 0, Math.PI * 2);
+                    ctx.fillStyle = STROBE_UP_COLOR; ctx.fill();
+                    ctx.lineWidth = ring; ctx.strokeStyle = '#FFFFFF'; ctx.stroke();
+                });
+                pts.forEach((p, i) => {
+                    if (phase.vy[i] > 0) return;
+                    const rr = r * 0.98;
+                    ctx.beginPath();
+                    ctx.arc(p.x * s, p.y * s, rr, 0, Math.PI * 2);
+                    ctx.lineWidth = ring * 1.2; ctx.strokeStyle = '#FFFFFF'; ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(p.x * s, p.y * s, rr * 0.72, 0, Math.PI * 2);
+                    ctx.lineWidth = rr * 0.56; ctx.strokeStyle = STROBE_DOWN_COLOR; ctx.stroke();
+                });
+                drawPhaseLegend(ctx, canvas, r);
+            }
+            if (phase) drawApexMark(ctx, pts, phase, s, r);
             if (onProgress) onProgress(1);
         } else {
             // 写真モード: 2点目以降、そのコマの映像から点の周囲だけを円形に切り貼り
@@ -3863,12 +4173,189 @@ async function generateStrobe(canvas, everyN, radius, onProgress, mode) {
                 ctx.restore();
                 if (onProgress) onProgress((i + 1) / pts.length);
             }
+            // 投げ上げのときは、各パッチの縁を上昇/下降で塗り分ける
+            // （映像そのものは触らず、輪郭だけで位相を見せる）
+            if (phase) {
+                // 写真モードは輪郭だけで位相を見せる。上りと下りが重なっても
+                // 実線と破線で区別できるようにする。
+                const lw = Math.max(2, radius * s * 0.07);
+                pts.forEach((p, i) => {
+                    const up = phase.vy[i] > 0;
+                    ctx.save();
+                    ctx.lineWidth = lw;
+                    ctx.setLineDash(up ? [] : [lw * 3, lw * 2.2]);
+                    ctx.strokeStyle = up ? STROBE_UP_COLOR : STROBE_DOWN_COLOR;
+                    ctx.beginPath();
+                    ctx.arc(p.x * s, p.y * s, radius * s * (up ? 1 : 0.92), 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                });
+                drawPhaseLegend(ctx, canvas, radius * s * 0.22);
+                drawApexMark(ctx, pts, phase, s, radius * s);
+            }
         }
     } finally {
         appState.isScanning = false;
         seekToFrame(returnFrame);
     }
     return pts.length;
+}
+
+// --- 提出用レポート画像 --------------------------------------------------
+// ストロボ写真＋既定グラフ＋照合コードを A4縦（1:1.414）の1枚にまとめる。
+// 動画が縦長なら「左にストロボ・右にグラフ縦積み」、横長なら「上にストロボ・
+// 下にグラフを格子」に自動で切り替える（縦長動画で横並びにすると軌道が潰れるため）。
+const REPORT_W = 1654;                                   // A4 @ 200dpi 相当
+const REPORT_H = Math.round(REPORT_W * Math.SQRT2);      // 2339
+
+async function composeReport(target, strobeCanvas, verify) {
+    const pad = 46;
+    const headH = 96;
+    const footH = 104;
+    target.width = REPORT_W;
+    target.height = REPORT_H;
+    const ctx = target.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, REPORT_W, REPORT_H);
+
+    const m = currentMode();
+    const unit = appState.calibration.scaleRatio ? 'cm' : 'px';
+    const portrait = strobeCanvas.height >= strobeCanvas.width;
+    const types = getSelectedGraphTypes().slice(0, 4);
+
+    // ---- 見出し ----
+    ctx.fillStyle = UI_COLORS.text;
+    ctx.font = `bold 42px ${FONT_SANS}`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillText(m.label, pad, pad + 44);
+    ctx.font = `24px ${FONT_SANS}`;
+    ctx.fillStyle = UI_COLORS.textSub;
+    ctx.fillText(`${m.axisText}　/　単位 ${unit}`, pad, pad + 80);
+    ctx.textAlign = 'right';
+    ctx.fillText(reportDateText(), REPORT_W - pad, pad + 44);
+    ctx.textAlign = 'left';
+    ctx.strokeStyle = UI_COLORS.grid;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pad, pad + headH); ctx.lineTo(REPORT_W - pad, pad + headH); ctx.stroke();
+
+    const bodyTop = pad + headH + 26;
+    const bodyBottom = REPORT_H - pad - footH;
+    const bodyH = bodyBottom - bodyTop;
+    const bodyW = REPORT_W - pad * 2;
+
+    // ---- ストロボとグラフの領域を決める ----
+    let strobeBox, graphBoxes;
+    if (portrait) {
+        const gw = Math.round(bodyW * 0.36);
+        const sw = bodyW - gw - 26;
+        strobeBox = { x: pad, y: bodyTop, w: sw, h: bodyH };
+        const n = Math.max(1, types.length);
+        const gh = Math.floor((bodyH - (n - 1) * 18) / n);
+        graphBoxes = types.map((t, i) => ({ x: pad + sw + 26, y: bodyTop + i * (gh + 18), w: gw, h: gh, type: t }));
+    } else {
+        const sh = Math.round(bodyH * 0.52);
+        strobeBox = { x: pad, y: bodyTop, w: bodyW, h: sh };
+        const rest = bodyH - sh - 26;
+        const cols = types.length >= 3 ? 2 : Math.max(1, types.length);
+        const rows = Math.ceil(types.length / cols);
+        const gw = Math.floor((bodyW - (cols - 1) * 18) / cols);
+        const gh = Math.floor((rest - (rows - 1) * 18) / rows);
+        graphBoxes = types.map((t, i) => ({
+            x: pad + (i % cols) * (gw + 18),
+            y: bodyTop + sh + 26 + Math.floor(i / cols) * (gh + 18),
+            w: gw, h: gh, type: t
+        }));
+    }
+
+    // ---- ストロボを枠に収めて貼る ----
+    drawFramedImage(ctx, strobeCanvas, strobeBox);
+
+    // ---- グラフを1枚ずつ、レポート用の解像度で描き直す ----
+    const data = appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame))
+        .sort((a, b) => a.frame - b.frame);
+    const kin = data.length ? computeKinematics(data) : [];
+    const tmp = document.createElement('canvas');
+    GRAPH_SCALE = 2.6;   // レポートは実寸が大きいので、文字も線も太らせる
+    for (const b of graphBoxes) {
+        tmp.width = b.w; tmp.height = b.h;
+        const holder = document.createElement('div');
+        Object.defineProperty(tmp, 'parentElement', { value: holder, configurable: true });
+        Object.defineProperty(holder, 'clientWidth', { value: b.w, configurable: true });
+        Object.defineProperty(holder, 'clientHeight', { value: b.h, configurable: true });
+        drawOneGraph(tmp, b.type, data, kin, unit);
+        ctx.drawImage(tmp, b.x, b.y);
+        ctx.strokeStyle = UI_COLORS.grid;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+    }
+    GRAPH_SCALE = 1;
+
+    // ---- 帯: 照合コードと条件 ----
+    const fy = bodyBottom + 20;
+    ctx.fillStyle = '#F1F3F6';
+    roundRectPath(ctx, pad, fy, bodyW, footH - 20, 10);
+    ctx.fill();
+    ctx.fillStyle = UI_COLORS.textSub;
+    ctx.font = `22px ${FONT_SANS}`;
+    ctx.fillText('照合コード', pad + 26, fy + 34);
+    ctx.fillStyle = UI_COLORS.text;
+    ctx.font = `bold 46px ${FONT_MONO}`;
+    ctx.fillText(verify.code, pad + 26, fy + 74);
+    ctx.textAlign = 'right';
+    ctx.font = `22px ${FONT_SANS}`;
+    ctx.fillStyle = UI_COLORS.textSub;
+    const scaleText = appState.calibration.scaleRatio
+        ? `スケール ${appState.calibration.scaleActual} cm`
+        : 'スケール未設定（px）';
+    ctx.fillText(`打点 ${data.length} 点　/　${scaleText}　/　${appState.videoName || ''}`,
+        REPORT_W - pad - 26, fy + 40);
+    ctx.fillText(`v${APP_VERSION}`, REPORT_W - pad - 26, fy + 74);
+    ctx.textAlign = 'left';
+}
+
+function reportDateText() {
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+}
+
+// 画像を枠の中に、縦横比を保って中央に収める
+function drawFramedImage(ctx, img, box) {
+    const k = Math.min(box.w / img.width, box.h / img.height);
+    const w = img.width * k, h = img.height * k;
+    const x = box.x + (box.w - w) / 2, y = box.y + (box.h - h) / 2;
+    ctx.drawImage(img, x, y, w, h);
+    ctx.strokeStyle = UI_COLORS.grid;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+}
+
+// 画像の隅に照合コードを焼き込む。スクリーンショットで提出されても、
+// 画面に見えている文字列で照合できるようにするため。
+function stampVerificationCode(canvas, code) {
+    const ctx = canvas.getContext('2d');
+    const fs = Math.max(16, Math.round(canvas.width * 0.028));
+    const pad = Math.round(fs * 0.5);
+    ctx.save();
+    ctx.font = `bold ${fs}px ${FONT_MONO}`;
+    const text = `照合 ${code}`;
+    const w = ctx.measureText(text).width + pad * 2;
+    const h = fs + pad * 2;
+    const x = canvas.width - w - pad, y = canvas.height - h - pad;
+    roundRectPath(ctx, x, y, w, h, pad);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(31,41,51,0.35)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#1F2933';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText(text, x + w / 2, y + h / 2);
+    ctx.restore();
 }
 
 function setupStrobe() {
@@ -3888,6 +4375,9 @@ function setupStrobe() {
                 <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
                     <input type="radio" name="strobe-mode" value="dots">点マーカー
                 </label>
+                <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap; margin-left:auto;">
+                    <input type="checkbox" id="strobe-report" checked>グラフを付けて提出用にする
+                </label>
             </div>
             <canvas id="strobe-preview" style="width:100%; border:1px solid #CBD2D9; border-radius:5px; background:#14181D;"></canvas>
             <div style="display:flex; gap:14px; margin-top:8px; font-size:0.8rem;">
@@ -3902,12 +4392,16 @@ function setupStrobe() {
                 <button class="btn btn-primary" id="btn-strobe-save" style="flex:1;">PNG保存</button>
                 <span id="strobe-status" style="font-size:0.75rem; color:#52606D;"></span>
             </div>
+            <p style="margin-top:8px; font-size:0.74rem; color:#52606D; line-height:1.55;">
+                画像には<b>照合コード</b>（打った点から作られる8桁）が印字され、PNGの中にも記録されます。
+                同じ動画でも、タップした位置が違えばコードは必ず変わります。
+            </p>
         `;
-        showInputDialog('ストロボ写真', body, '', () => {});
+        showInputDialog('提出用の画像を作る', body, '', () => {});
 
         const cv = document.getElementById('strobe-preview');
         const status = document.getElementById('strobe-status');
-        const currentMode = () => {
+        const strobeDisplayMode = () => {
             const el = document.querySelector('input[name="strobe-mode"]:checked');
             return el ? el.value : 'photo';
         };
@@ -3920,7 +4414,7 @@ function setupStrobe() {
                 again = false;
                 const n = parseInt(document.getElementById('strobe-n').value);
                 const r = parseInt(document.getElementById('strobe-r').value);
-                const mode = currentMode();
+                const mode = strobeDisplayMode();
                 document.getElementById('strobe-n-val').textContent = n;
                 document.getElementById('strobe-r-val').textContent = r;
                 const rLabel = document.getElementById('strobe-r-label');
@@ -3938,11 +4432,43 @@ function setupStrobe() {
         document.getElementById('strobe-r').addEventListener('change', regen);
         document.querySelectorAll('input[name="strobe-mode"]').forEach(el =>
             el.addEventListener('change', regen));
-        document.getElementById('btn-strobe-save').addEventListener('click', () => {
-            const name = currentMode() === 'dots' ? 'strobe_dots.png' : 'strobe.png';
-            cv.toBlob((blob) => {
-                if (blob) { downloadBlob(blob, name); logDebug('ストロボ写真を保存しました'); }
-            }, 'image/png');
+        document.getElementById('btn-strobe-save').addEventListener('click', async () => {
+            const saveBtn = document.getElementById('btn-strobe-save');
+            saveBtn.disabled = true;
+            if (status) status.textContent = '書き出し中…';
+            try {
+                const verify = await computeVerificationCode();
+                const wantReport = document.getElementById('strobe-report').checked;
+                let out = cv;
+                if (wantReport) {
+                    out = document.createElement('canvas');
+                    await composeReport(out, cv, verify);
+                } else {
+                    // 写真だけのときも、画像の中に照合コードは必ず焼き込む
+                    stampVerificationCode(cv, verify.code);
+                }
+                const blob = await new Promise(res => out.toBlob(res, 'image/png'));
+                if (!blob) throw new Error('PNGの生成に失敗しました');
+                const kind = wantReport ? 'report' : (strobeDisplayMode() === 'dots' ? 'strobe_dots' : 'strobe');
+                const tagged = await pngWithMetadata(blob, {
+                    'tracker-code': verify.code,
+                    'tracker-hash': verify.hex,
+                    'tracker-mode': currentMode().label,
+                    'tracker-points': String(strobePoints(1).length),
+                    'tracker-video': appState.videoName || '',
+                    'tracker-version': APP_VERSION,
+                    'Software': '動画解析トラッカー'
+                });
+                downloadBlob(tagged, `${kind}_${verify.code.replace('-', '')}.png`);
+                if (status) status.textContent = `保存しました（照合コード ${verify.code}）`;
+                logDebug(`提出用画像を保存: 照合コード ${verify.code}`);
+                if (wantReport) regen();   // プレビューをストロボ表示に戻す
+            } catch (e) {
+                if (status) status.textContent = '保存に失敗しました: ' + (e && e.message);
+                logDebug('提出用画像の保存に失敗: ' + (e && e.message));
+            } finally {
+                saveBtn.disabled = false;
+            }
         });
         regen();
     });
@@ -4061,6 +4587,11 @@ window.setMotionMode = setMotionMode;
 window.openModePanel = openModePanel;
 window.closeModePanel = closeModePanel;
 window.MOTION_MODES = MOTION_MODES;
+window.computeVerificationCode = computeVerificationCode;
+window.pngWithMetadata = pngWithMetadata;
+window.composeReport = composeReport;
+window.strobePhaseInfo = strobePhaseInfo;
+window.strobePoints = strobePoints;
 window.generateStrobe = generateStrobe;
 window.strobePoints = strobePoints;
 window.frameIndexOfTime = frameIndexOfTime;

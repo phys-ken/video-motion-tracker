@@ -233,13 +233,12 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
         // --- 主要動線: 原点 → スケール → トラック → 出力 ---
         const flow = await evalAsync(cdp, S, `
             const s = window.appState;
-            // 原点設定 (十字=canvas中央)
-            window.setPendingCapture('origin'); window.confirmAtCrosshair();
-            const originSet = !!s.calibration.origin;
             // スケール設定: 始点→(パンで十字位置をずらして)終点→ダイアログに実寸入力
-            window.setPendingCapture('scale'); window.confirmAtCrosshair();
+            // 確定はシーク完了待ちで最大1件だけ保留されるので、1件ずつ落ち着かせてから次へ
+            const settle = () => new Promise(r => setTimeout(r, 150));
+            window.setPendingCapture('scale'); window.confirmAtCrosshair(); await settle();
             s.viewState.offsetX -= 200; // 十字が指す動画座標をずらす
-            window.confirmAtCrosshair();
+            window.confirmAtCrosshair(); await settle();
             // showInputDialog が出ている: 実寸 50cm を入力して OK
             const dlgInput = document.getElementById('dialog-input-val');
             const dlgShown = !!dlgInput;
@@ -247,15 +246,20 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             document.getElementById('dialog-btn-ok').click();
             const scaleSet = !!s.calibration.scaleRatio;
             // トラック: 数コマに点を打つ (確定でステップ送り)
+            await settle();
             window.seekToFrame(0);
-            await new Promise(r=>setTimeout(r,60));
+            await new Promise(r=>setTimeout(r,200));
             const before = s.trackingData.length;
             window.setPendingCapture(null);
             for (let k=0;k<4;k++){ window.confirmAtCrosshair(); await new Promise(r=>setTimeout(r,80)); }
             const tracked = s.trackingData.length - before;
-            return { originSet, dlgShown, scaleSet, scaleRatio: s.calibration.scaleRatio, tracked };
+            // 原点は「最初の打点」で自動的に決まる（設定操作は無い）
+            const kin = window.computeKinematics(
+                s.trackingData.filter(p=>p.objectId===s.activeObjectId).sort((a,b)=>a.frame-b.frame));
+            const originAuto = kin.length>0 && Math.abs(kin[0].x)<1e-9 && Math.abs(kin[0].y)<1e-9;
+            return { originAuto, dlgShown, scaleSet, scaleRatio: s.calibration.scaleRatio, tracked };
         `);
-        ok(flow.originSet, '原点を設定できた (setPendingCapture+confirmAtCrosshair)');
+        ok(flow.originAuto, '原点が最初の打点で自動的に決まる (最初の点が (0,0))');
         ok(flow.dlgShown && flow.scaleSet && isFinite(flow.scaleRatio) && flow.scaleRatio > 0,
             `スケールを設定できた (${flow.scaleRatio ? flow.scaleRatio.toFixed(4) : 'n/a'} cm/px)`);
         ok(flow.tracked >= 3, `トラック点を複数登録できた (${flow.tracked}点, 確定で自動コマ送り)`);
@@ -335,6 +339,71 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             const n = await evalExpr(cdp, S, `appState.frameTimes.length`);
             ok(n === expected, `コマ落ちなし: ${name} が ${n}/${expected} コマ`);
         }
+
+        // --- 照合コード: 打点から作られ、1点でも動かせば必ず変わる ---
+        const verify = await evalAsync(cdp, S, `
+            // 直前のサンプル読込ループで打点が消えているので、検証用に置き直す
+            appState.videoName = 'samples/free_fall.mp4';
+            appState.videoSize = 12345;
+            appState.activeObjectId = 1;
+            appState.rangeIn = 0; appState.rangeOut = 20;
+            appState.trackingData = [0,1,2,3,4].map(i =>
+                ({ id: 900+i, frame: i, time: i/60, x: 100+i*3.5, y: 200+i*i*2.5, objectId: 1 }));
+            const a = await window.computeVerificationCode();
+            const p = appState.trackingData.find(q => q.objectId === appState.activeObjectId);
+            const beforeX = p.x;
+            p.x = beforeX + 0.5;                       // 打点を少しだけ動かす
+            const b = await window.computeVerificationCode();
+            p.x = beforeX;
+            const c = await window.computeVerificationCode();
+            const savedName = appState.videoName;
+            appState.videoName = 'other.mp4';          // 別の動画なら別コード
+            const d = await window.computeVerificationCode();
+            appState.videoName = savedName;
+            return { a: a.code, b: b.code, c: c.code, d: d.code, hexLen: a.hex.length };
+        `);
+        ok(/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(verify.a),
+            `照合コードが8桁の読みやすい形式 (${verify.a})`);
+        ok(verify.a !== verify.b, '打点を0.5pxずらすとコードが変わる');
+        ok(verify.a === verify.c, '同じ打点に戻せば同じコードに戻る（再現性がある）');
+        ok(verify.a !== verify.d, '別の動画なら別のコードになる');
+        ok(verify.hexLen === 64, 'SHA-256(64桁hex)から作られている');
+
+        // --- PNG に照合情報が埋まり、画像として壊れていないこと ---
+        const png = await evalAsync(cdp, S, `
+            const cv = document.createElement('canvas'); cv.width = 40; cv.height = 30;
+            const cx = cv.getContext('2d'); cx.fillStyle = '#123456'; cx.fillRect(0,0,40,30);
+            const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+            const tagged = await window.pngWithMetadata(blob, { 'tracker-code': 'AB23-CD45' });
+            const buf = new Uint8Array(await tagged.arrayBuffer());
+            let ascii = ''; for (let i = 0; i < buf.length; i++) ascii += String.fromCharCode(buf[i]);
+            // 埋め込んだPNGがブラウザでちゃんとデコードできるか
+            const url = URL.createObjectURL(tagged);
+            const okDecode = await new Promise(res => {
+                const im = new Image();
+                im.onload = () => res(im.width === 40 && im.height === 30);
+                im.onerror = () => res(false);
+                im.src = url;
+            });
+            return { hasText: ascii.includes('tEXt'), hasKey: ascii.includes('tracker-code'),
+                     hasVal: ascii.includes('AB23-CD45'), grew: buf.length > 100, okDecode };
+        `);
+        ok(png.hasText && png.hasKey && png.hasVal, 'PNGに tEXt で照合コードが埋め込まれる');
+        ok(png.okDecode, '埋め込み後もPNGとして正しく読める（40x30で復号できた）');
+
+        // --- 提出用レポート画像が A4縦の比率で組める ---
+        const rep = await evalAsync(cdp, S, `
+            const strobe = document.createElement('canvas');
+            strobe.width = 540; strobe.height = 960;
+            const sx = strobe.getContext('2d'); sx.fillStyle='#222'; sx.fillRect(0,0,540,960);
+            const out = document.createElement('canvas');
+            await window.composeReport(out, strobe, { code: 'AB23-CD45', hex: 'x'.repeat(64) });
+            const d = out.getContext('2d').getImageData(4, 4, 1, 1).data;
+            return { w: out.width, h: out.height, ratio: +(out.height / out.width).toFixed(3),
+                     whiteBg: d[0] > 240 && d[1] > 240 && d[2] > 240 };
+        `);
+        ok(Math.abs(rep.ratio - Math.SQRT2) < 0.01, `レポートがA4縦の比率 (${rep.w}x${rep.h}, 比 ${rep.ratio})`);
+        ok(rep.whiteBg, 'レポートの背景が白（印刷向き）');
 
     } catch (e) {
         fail++;
