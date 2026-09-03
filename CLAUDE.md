@@ -24,6 +24,7 @@ npm test                # ロジック単体（Node）
 npm run test:e2e        # 実 Chrome を DevTools Protocol で駆動（40）
 npm run test:precision  # 真値既知動画で g を測る（6）
 npm run test:views      # PC/タブレット横/縦/スマホの通し（100+）
+npm run test:ipad       # iPadのUA・タッチ・回転・保存の通し（23）
 npm run test:all
 ```
 Chrome 系でしか動かない。iPad Safari の挙動（HEVC・回転・保存先）は実機でしか確認できない。

@@ -18,7 +18,7 @@
     <meta name="twitter:card" content="summary">
     <!-- アイコンフォントは同梱(学校MDMフィルタ対策)。本文は端末ネイティブ書体(CDN依存なし) -->
     <link rel="stylesheet" href="vendor/material-icons-round.css">
-    <link rel="stylesheet" href="styles.css?v=2026-09-03a">
+    <link rel="stylesheet" href="styles.css?v=2026-09-03b">
 </head>
 <body>
     <div class="app-container">
@@ -454,12 +454,15 @@
     </div>
 
     <!-- Hidden Video Element for background playing & frame capturing -->
-    <video id="hidden-video" style="display: none;" playsinline muted></video>
+    <!-- display:none にすると iOS でフレームを canvas に取り出せないことがあるため、
+         レイアウトから外れる画面外に置く（見えないが「表示されている」状態にする） -->
+    <video id="hidden-video" playsinline muted preload="metadata"
+           style="position:fixed; left:-9999px; top:0; width:2px; height:2px; opacity:0; pointer-events:none;"></video>
 
     <!-- 依存ライブラリは同梱(学校MDMフィルタ・教室Wi-Fi対策) -->
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（styles.css の ?v= も同様。キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-09-03a"></script>
+    <script src="app.js?v=2026-09-03b"></script>
 </body>
 </html>

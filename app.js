@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-03a';
+const APP_VERSION = '2026-09-03b';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -536,8 +536,13 @@ document.addEventListener('DOMContentLoaded', () => {
     setupScaleBanner();
 
     // ウィンドウリサイズ時の処理
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('resize', updateGraph);
+    window.addEventListener('resize', scheduleRelayout);
+    // iOS は回転直後に古い寸法を返すことがあるので、orientationchange でも
+    // 少し遅らせて測り直す（同じ寸法なら何もしないので二重でも害はない）
+    window.addEventListener('orientationchange', () => {
+        scheduleRelayout();
+        setTimeout(scheduleRelayout, 300);
+    });
 
     // 起動時の無条件復帰は廃止。動画読込時に前回データは破棄し、同じ動画のときだけ
     // 数秒間「戻す」を出す（discardPreviousState / offerUndoDiscard）。
@@ -1978,6 +1983,27 @@ function updateTimeDisplay() {
 }
 
 // Canvasリサイズ処理
+// 画面の大きさが実際に変わったときだけ描き直す。
+// iOS Safari は、寸法が変わっていないのに resize を投げることがある（幽霊resize）。
+// また回転直後の innerWidth/innerHeight は古い値のことがあるため、実測は
+// 描画を2フレーム待ってからコンテナの実サイズで行う。
+let lastLayoutSize = { w: -1, h: -1 };
+function relayoutNow() {
+    const c = document.getElementById('canvas-container');
+    if (!c) return;
+    const w = c.clientWidth, h = c.clientHeight;
+    if (w === lastLayoutSize.w && h === lastLayoutSize.h) return;
+    lastLayoutSize = { w, h };
+    handleResize();
+    updateGraph();
+}
+function scheduleRelayout() {
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => requestAnimationFrame(relayoutNow));
+    }
+    setTimeout(relayoutNow, 250);   // rAFが動かない状況（背面タブ等）の保険
+}
+
 function handleResize() {
     const container = document.getElementById('canvas-container');
     if (!container || !appState.videoElement.src || appState.videoElement.videoWidth === 0) return;
@@ -4477,6 +4503,8 @@ function setupStrobe() {
                 </label>
             </div>
             <canvas id="strobe-preview" style="width:100%; border:1px solid #CBD2D9; border-radius:5px; background:#14181D;"></canvas>
+            <img id="strobe-final" alt="提出用の画像" hidden
+                 style="width:100%; border:1px solid #CBD2D9; border-radius:5px; background:#14181D;">
             <div style="display:flex; gap:14px; margin-top:8px; font-size:0.8rem;">
                 <label style="flex:1;">間引き（Nコマおき）: <span id="strobe-n-val">1</span>
                     <input type="range" id="strobe-n" min="1" max="10" value="1" style="width:100%;">
@@ -4491,7 +4519,9 @@ function setupStrobe() {
             </div>
             <p style="margin-top:8px; font-size:0.74rem; color:#52606D; line-height:1.55;">
                 画像には<b>照合コード</b>（打った点から作られる8桁）が印字され、PNGの中にも記録されます。
-                同じ動画でも、タップした位置が違えばコードは必ず変わります。
+                同じ動画でも、タップした位置が違えばコードは必ず変わります。<br>
+                <span id="strobe-longpress" hidden>うまく保存できないときは、上の画像を<b>長押し</b>して
+                「写真に追加」でも保存できます。</span>
             </p>
         `;
         showInputDialog('提出用の画像を作る', body, '', () => {});
@@ -4525,50 +4555,118 @@ function setupStrobe() {
             } while (again);
             busy = false;
         };
-        document.getElementById('strobe-n').addEventListener('change', regen);
-        document.getElementById('strobe-r').addEventListener('change', regen);
-        document.querySelectorAll('input[name="strobe-mode"]').forEach(el =>
-            el.addEventListener('change', regen));
-        document.getElementById('btn-strobe-save').addEventListener('click', async () => {
-            const saveBtn = document.getElementById('btn-strobe-save');
-            saveBtn.disabled = true;
-            if (status) status.textContent = '書き出し中…';
-            try {
-                const verify = await computeVerificationCode();
-                const wantReport = document.getElementById('strobe-report').checked;
-                let out = cv;
-                if (wantReport) {
-                    out = document.createElement('canvas');
-                    await composeReport(out, cv, verify);
-                } else {
-                    // 写真だけのときも、画像の中に照合コードは必ず焼き込む
-                    stampVerificationCode(cv, verify.code);
-                }
-                const blob = await new Promise(res => out.toBlob(res, 'image/png'));
-                if (!blob) throw new Error('PNGの生成に失敗しました');
-                const kind = wantReport ? 'report' : (strobeDisplayMode() === 'dots' ? 'strobe_dots' : 'strobe');
-                const tagged = await pngWithMetadata(blob, {
-                    'tracker-code': verify.code,
-                    'tracker-hash': verify.hex,
-                    'tracker-mode': currentMode().label,
-                    'tracker-points': String(strobePoints(1).length),
-                    'tracker-video': appState.videoName || '',
-                    'tracker-version': APP_VERSION,
-                    'Software': '動画解析トラッカー'
-                });
-                downloadBlob(tagged, `${kind}_${verify.code.replace('-', '')}.png`);
-                if (status) status.textContent = `保存しました（照合コード ${verify.code}）`;
-                logDebug(`提出用画像を保存: 照合コード ${verify.code}`);
-                if (wantReport) regen();   // プレビューをストロボ表示に戻す
-            } catch (e) {
-                if (status) status.textContent = '保存に失敗しました: ' + (e && e.message);
-                logDebug('提出用画像の保存に失敗: ' + (e && e.message));
-            } finally {
-                saveBtn.disabled = false;
+        // --- 提出画像を「押す前に」作っておく -------------------------------
+        // iOS Safari は、タップから時間の空いた（await をまたいだ）保存を黙って
+        // 無視することがある。合成・ハッシュ・メタデータ埋め込みは重いので、
+        // 設定が変わるたびに先に完成PNGまで作っておき、[保存] のタップでは
+        // 同期的に共有／ダウンロードを呼ぶだけにする。
+        const finalImg = document.getElementById('strobe-final');
+        const longPress = document.getElementById('strobe-longpress');
+        let prepared = null, preparedURL = null, preparing = null;
+
+        const clearPrepared = () => {
+            prepared = null;
+            if (preparedURL) { URL.revokeObjectURL(preparedURL); preparedURL = null; }
+            if (finalImg) { finalImg.hidden = true; finalImg.removeAttribute('src'); }
+            if (longPress) longPress.hidden = true;
+            cv.hidden = false;
+        };
+
+        // 実際に保存されるものと同じ画像を作る（プレビューにもこれを出す）
+        const buildSubmission = async () => {
+            const verify = await computeVerificationCode();
+            const wantReport = document.getElementById('strobe-report').checked;
+            let out = cv;
+            if (wantReport) {
+                out = document.createElement('canvas');
+                await composeReport(out, cv, verify);
+            } else {
+                // 写真だけのときも、画像の中に照合コードは必ず焼き込む
+                stampVerificationCode(cv, verify.code);
             }
+            const blob = await new Promise(res => out.toBlob(res, 'image/png'));
+            if (!blob) throw new Error('PNGの生成に失敗しました');
+            const kind = wantReport ? 'report' : (strobeDisplayMode() === 'dots' ? 'strobe_dots' : 'strobe');
+            const tagged = await pngWithMetadata(blob, {
+                'tracker-code': verify.code,
+                'tracker-hash': verify.hex,
+                'tracker-mode': currentMode().label,
+                'tracker-points': String(strobePoints(1).length),
+                'tracker-video': appState.videoName || '',
+                'tracker-version': APP_VERSION,
+                'Software': '動画解析トラッカー'
+            });
+            return { blob: tagged, code: verify.code,
+                     filename: `${kind}_${verify.code.replace('-', '')}.png` };
+        };
+
+        const prepare = async () => {
+            clearPrepared();
+            if (!strobePoints(1).length) return;
+            if (status) status.textContent = '書き出しの準備中…';
+            try {
+                const p = await buildSubmission();
+                prepared = p;
+                // 完成画像を <img> で出す。iOS では長押しで「写真に追加」ができる
+                preparedURL = URL.createObjectURL(p.blob);
+                if (finalImg) { finalImg.src = preparedURL; finalImg.hidden = false; cv.hidden = true; }
+                if (longPress) longPress.hidden = false;
+                if (status) status.textContent = `保存できます（照合コード ${p.code}）`;
+            } catch (e) {
+                if (status) status.textContent = '準備に失敗しました: ' + (e && e.message);
+                logDebug('提出画像の準備に失敗: ' + (e && e.message));
+            }
+        };
+        // 設定変更 → ストロボを描き直し → 完成PNGを作り直す、を1本にまとめる
+        const refresh = () => { preparing = regen().then(prepare); return preparing; };
+
+        document.getElementById('strobe-n').addEventListener('change', refresh);
+        document.getElementById('strobe-r').addEventListener('change', refresh);
+        document.getElementById('strobe-report').addEventListener('change', refresh);
+        document.querySelectorAll('input[name="strobe-mode"]').forEach(el =>
+            el.addEventListener('change', refresh));
+        // [保存] のタップは同期で完結させる（iOS Safari の保存はここが命）
+        document.getElementById('btn-strobe-save').addEventListener('click', () => {
+            if (!prepared) {
+                if (status) status.textContent = '準備中です。数秒待ってもう一度押してください。';
+                if (!preparing) refresh();
+                (preparing || Promise.resolve()).then(() => {
+                    if (prepared && status) status.textContent =
+                        `準備できました。もう一度［PNG保存］を押してください（照合コード ${prepared.code}）`;
+                });
+                return;
+            }
+            deliverSubmission(prepared, status);
+            if (prepared) logDebug(`提出用画像を保存: 照合コード ${prepared.code}`);
         });
-        regen();
+        refresh();
     });
+}
+
+// 提出画像を届ける。共有シート（写真に保存が選べる）が使える端末ではそちらを
+// 優先し、使えなければ従来のダウンロードに落とす。iOS ではタップの文脈が切れると
+// どちらも黙って無視されるため、この関数は同期的に呼ぶこと（await をまたがない）。
+function deliverSubmission(p, status) {
+    const done = () => { if (status) status.textContent = `保存しました（照合コード ${p.code}）`; };
+    try {
+        const file = new File([p.blob], p.filename, { type: 'image/png' });
+        if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file] }).then(done).catch(err => {
+                if (err && err.name === 'AbortError') {
+                    if (status) status.textContent = '保存をやめました';
+                    return;   // 生徒がシートを閉じただけ
+                }
+                logDebug('共有に失敗したのでダウンロードに切り替え: ' + (err && err.message));
+                downloadBlob(p.blob, p.filename);
+                done();
+            });
+            return;
+        }
+    } catch (e) {
+        logDebug('共有を試せませんでした: ' + (e && e.message));
+    }
+    downloadBlob(p.blob, p.filename);
+    done();
 }
 
 function downloadBlob(blob, filename) {

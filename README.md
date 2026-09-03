@@ -76,6 +76,7 @@ npm test              # ロジック単体テスト（数値微分・時刻表�
 npm run test:e2e      # 実Chromeを DevTools Protocol で駆動するE2E（動画を実デコード）
 npm run test:precision # 真値既知の動画から g を測り 9.8±5% と v-t の直線性を検証
 npm run test:views    # PC/タブレット横/タブレット縦/スマホの4画面を通しで検証
+npm run test:ipad     # iPadのUA・タッチ・回転で通しで検証（縦動画・ピンチ・保存）
 npm run test:all      # 上記すべて
 ```
 
