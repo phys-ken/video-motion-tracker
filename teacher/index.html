@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>提出画像の照合 — 動画解析トラッカー</title>
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#F7F8FA;--surface:#fff;--line:#CBD2D9;--text:#1F2933;--sub:#52606D;--accent:#0B6BCB;--warn:#B42318;--ok:#0F7B3E;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;padding:24px 16px 60px}
+.wrap{max-width:960px;margin:0 auto}
+h1{font-size:1.25rem;margin:0 0 4px}
+.lead{color:var(--sub);font-size:.86rem;margin:0 0 18px}
+.drop{border:2px dashed var(--line);border-radius:12px;background:var(--surface);padding:34px 18px;text-align:center;cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:#F2F7FD}
+.drop b{display:block;font-size:1rem;margin-bottom:4px}
+.drop span{color:var(--sub);font-size:.83rem}
+table{width:100%;border-collapse:collapse;margin-top:18px;background:var(--surface);font-size:.83rem}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:#EEF2F6;font-weight:600;white-space:nowrap}
+td.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+tr.dup td{background:#FDF2F2}
+tr.none td{color:var(--sub)}
+.tag{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.74rem;font-weight:600}
+.tag.dup{background:#FDE2E2;color:var(--warn)}
+.tag.ok{background:#DFF3E6;color:var(--ok)}
+.tag.none{background:#EEF2F6;color:var(--sub)}
+.sum{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:9px;background:var(--surface);font-size:.86rem}
+.sum.hit{border-color:var(--warn);background:#FDF2F2}
+.note{margin-top:26px;font-size:.8rem;color:var(--sub);border-top:1px solid var(--line);padding-top:14px}
+.note h2{font-size:.9rem;color:var(--text);margin:0 0 6px}
+button.clear{margin-top:12px;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:6px 14px;font-size:.83rem;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>提出画像の照合</h1>
+<p class="lead">生徒が提出した PNG を放り込むと、画像の中に記録された照合コードを読み、
+同じコードの提出（＝同じ打点データ）がないかを調べます。
+画像はブラウザの中だけで読み、どこにも送信しません。</p>
+
+<div class="drop" id="drop">
+    <b>ここに PNG をドロップ</b>
+    <span>クリックして選ぶこともできます。複数まとめて可。</span>
+    <input type="file" id="file" accept="image/png" multiple hidden>
+</div>
+
+<div class="sum" id="sum" hidden></div>
+<table id="tbl" hidden>
+    <thead><tr><th>ファイル名</th><th>照合コード</th><th>運動</th><th>打点</th><th>元の動画</th><th>版</th><th>判定</th></tr></thead>
+    <tbody id="tb"></tbody>
+</table>
+<button class="clear" id="clear" hidden>消してやり直す</button>
+
+<div class="note">
+    <h2>読み方</h2>
+    <p>照合コードは<b>打った点の座標と時刻から作られる 8 桁</b>です。同じ動画でも、
+    タップした位置が少しでも違えばコードは必ず変わります。したがって
+    <b>同じコードが 2 人から出たら、同じ打点データを使い回しています</b>。
+    偶然一致する確率は無視できる大きさです。</p>
+    <p>コードが「読めない」と出る画像は、スクリーンショットや、画像編集アプリを通したものです。
+    その場合は<b>画像に印字されている 8 桁</b>を目で読み、この表と突き合わせてください。</p>
+    <p>このページは生徒には配布していません（アプリからのリンクもありません）。</p>
+</div>
+</div>
+
+<script>
+const rows = [];
+const $ = id => document.getElementById(id);
+
+// PNG の tEXt チャンクを読む（アプリが IHDR の直後に書いている）
+function readPngText(buf) {
+    const b = new Uint8Array(buf), out = {};
+    if (b.length < 8 || b[1] !== 0x50 || b[2] !== 0x4E || b[3] !== 0x47) return null;
+    const dv = new DataView(buf);
+    let off = 8;
+    while (off + 8 <= b.length) {
+        const len = dv.getUint32(off);
+        const type = String.fromCharCode(b[off+4], b[off+5], b[off+6], b[off+7]);
+        const data = off + 8;
+        if (type === 'IEND') break;
+        if (type === 'tEXt') {
+            let z = data;
+            while (z < data + len && b[z] !== 0) z++;
+            const key = new TextDecoder().decode(b.subarray(data, z));
+            const val = new TextDecoder().decode(b.subarray(z + 1, data + len));
+            out[key] = val;
+        }
+        off = data + len + 4;
+        if (len < 0 || off > b.length) break;
+    }
+    return out;
+}
+
+async function addFiles(files) {
+    for (const f of files) {
+        let meta = null;
+        try { meta = readPngText(await f.arrayBuffer()); } catch (e) { meta = null; }
+        rows.push({ name: f.name, meta: meta || {} });
+    }
+    render();
+}
+
+function render() {
+    const counts = {};
+    rows.forEach(r => { const c = r.meta['tracker-code']; if (c) counts[c] = (counts[c] || 0) + 1; });
+    const tb = $('tb');
+    tb.innerHTML = '';
+    rows.forEach(r => {
+        const m = r.meta, code = m['tracker-code'];
+        const dup = code && counts[code] > 1;
+        const tr = document.createElement('tr');
+        tr.className = dup ? 'dup' : (code ? '' : 'none');
+        const tag = dup ? '<span class="tag dup">重複 ' + counts[code] + ' 件</span>'
+                  : code ? '<span class="tag ok">単独</span>'
+                         : '<span class="tag none">読めない</span>';
+        const cells = [r.name, code || '—', m['tracker-mode'] || '—',
+                       m['tracker-points'] || '—', m['tracker-video'] || '—',
+                       m['tracker-version'] || '—', tag];
+        cells.forEach((v, i) => {
+            const td = document.createElement('td');
+            if (i === 1) td.className = 'code';
+            if (i === 6) td.innerHTML = v; else td.textContent = v;
+            tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+    });
+    const dupCodes = Object.keys(counts).filter(c => counts[c] > 1);
+    const unread = rows.filter(r => !r.meta['tracker-code']).length;
+    const sum = $('sum');
+    sum.hidden = rows.length === 0;
+    sum.className = 'sum' + (dupCodes.length ? ' hit' : '');
+    sum.innerHTML = rows.length === 0 ? '' :
+        '<b>' + rows.length + ' 件</b>を読みました。' +
+        (dupCodes.length
+            ? '<b style="color:#B42318">同じコードの提出が ' + dupCodes.length + ' 組あります（' + dupCodes.join(', ') + '）。</b>'
+            : 'コードの重複はありません。') +
+        (unread ? ' コードを読めなかった画像が ' + unread + ' 件あります（印字された8桁を目で確認してください）。' : '');
+    $('tbl').hidden = rows.length === 0;
+    $('clear').hidden = rows.length === 0;
+}
+
+const drop = $('drop'), file = $('file');
+drop.addEventListener('click', () => file.click());
+file.addEventListener('change', () => { addFiles([...file.files]); file.value = ''; });
+['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files].filter(f => /\.png$/i.test(f.name))));
+$('clear').addEventListener('click', () => { rows.length = 0; render(); });
+</script>
+</body>
+</html>

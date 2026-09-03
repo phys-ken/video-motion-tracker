@@ -65,6 +65,8 @@ URL を変えたときは `tools/gen_assets.py` で再生成してください�
 | `tools/` | サンプル動画・アイコン・QRのジェネレータ |
 | `serve.py` | ローカル開発サーバ（キャッシュ無効・LAN公開） |
 | `test_logic.js` / `tests/` / `test.html` | テスト一式 |
+| `teacher/` | 提出画像の照合ページ（教員用・アプリからのリンクなし） |
+| `docs/CLASSROOM.md` | 授業当日の手引き（教員用） |
 | `vendor/` | 同梱ライブラリ（[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)） |
 
 ## テスト
@@ -77,6 +79,7 @@ npm run test:e2e      # 実Chromeを DevTools Protocol で駆動するE2E（動�
 npm run test:precision # 真値既知の動画から g を測り 9.8±5% と v-t の直線性を検証
 npm run test:views    # PC/タブレット横/タブレット縦/スマホの4画面を通しで検証
 npm run test:ipad     # iPadのUA・タッチ・回転で通しで検証（縦動画・ピンチ・保存）
+npm run test:teacher  # 教員用の照合ページが重複を見つけられるかを検証
 npm run test:all      # 上記すべて
 ```
 
