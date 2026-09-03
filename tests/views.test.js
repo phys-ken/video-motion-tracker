@@ -305,6 +305,21 @@ async function ev(cdp, S, body) {
                 fs.writeFileSync(path.join(SHOT_DIR, `${V.key}_5_report.png`),
                     Buffer.from(durl.split(',')[1], 'base64'));
             }
+
+            // --- 打点を残したまま開き直す（共用iPadで前の人の作業が残っている状況） ---
+            // 起動パネルは必ず出て、前回の種類は選択済みにならない（黙って引き継がない）
+            await ev(cdp, S, `window.persistState(); return true;`);
+            await ev(cdp, S, `location.reload();`);
+            await sleep(1600);
+            const again = await ev(cdp, S, `
+                const ov = document.getElementById('mode-overlay');
+                return { shown: getComputedStyle(ov).display !== 'none',
+                         active: document.querySelectorAll('#mode-grid .mode-card.active').length,
+                         sampleDisabled: document.getElementById('mode-btn-sample').disabled,
+                         foot: document.getElementById('mode-foot').textContent };`);
+            ok(again.shown && again.active === 0 && again.sampleDisabled,
+                '打点が残っていても起動パネルが出て、種類は未選択に戻る');
+            ok(/前回の打点/.test(again.foot) && /戻す/.test(again.foot), `残っている打点と「戻す」の案内が出る (${again.foot.slice(0, 30)}…)`);
         }
     } catch (e) {
         fail++;

@@ -2,9 +2,9 @@
 // iPadおよび各種ブラウザ向け動画解析ウェブアプリコアロジック
 
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
-// <script src="app.js?v=..."> のクエリ値も同じ文字列に合わせること
+// <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-02b';
+const APP_VERSION = '2026-09-03a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -133,9 +133,12 @@ function updateModePanelReady() {
     }
     if (sample) sample.disabled = !ready;
     if (foot) {
+        const left = ready ? null : savedTrackingSummary();
         foot.textContent = ready
             ? `${currentMode().label} — ${currentMode().axisText}。動画を読み込んで始めましょう。`
-            : 'まず上から運動の種類を選んでください。';
+            : left
+                ? `前回の打点（${left.label ? left.label + '・' : ''}${left.n}点）が残っています。運動の種類を選び直してください。同じ動画を選べば「戻す」で続きから再開できます。`
+                : 'まず上から運動の種類を選んでください。';
     }
 }
 
@@ -369,14 +372,17 @@ function persistState() {
     } catch (e) { /* プライベートモード等では無視 */ }
 }
 
-// 前回の打点が保存として残っているか（起動時に運動の種類を聞くかどうかの判断）
-function hasSavedTracking() {
+// 前回の打点が保存として残っているか。残っていれば {n, label} を返す。
+// 共用のiPadで「前の人の作業」が残っている場合も、途中で開き直した本人の場合もある。
+function savedTrackingSummary() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return false;
+        if (!raw) return null;
         const obj = JSON.parse(raw);
-        return Array.isArray(obj.trackingData) && obj.trackingData.length > 0;
-    } catch (e) { return false; }
+        if (!Array.isArray(obj.trackingData) || obj.trackingData.length === 0) return null;
+        const m = MOTION_MODES[obj.motionMode];
+        return { n: obj.trackingData.length, label: m ? m.label : '' };
+    } catch (e) { return null; }
 }
 
 // 新しい動画を読み込む直前に呼ぶ：前回の計測データ・校正・Undo履歴・選択状態を
@@ -542,14 +548,19 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshFpsUI();
 
     // 空スタート: まず「どの運動を測るか」を選ばせ、そのパネルから動画を読み込ませる。
-    // ただし前回の打点が残っている（＝作業の途中で開き直した）ときは、
-    // いちいち聞かずに前回のモードで再開する。
+    // 前回の打点が残っているときも必ず聞く。共用のiPadだと「前の人」のモードを
+    // 黙って引き継いで軸の符号が逆のまま測ってしまうので、その場合は前回の種類を
+    // 選択済みにもしない（1タップ増えるだけ）。途中で開き直した本人は、同じ動画を
+    // 選び直せば「戻す」で打点もモードも復帰できる。
     if (window.__suppressModePanel) {
         // 自動テストが「読み込み→操作」を一直線に走らせるための抜け道
         if (!appState.motionMode) setMotionMode(DEFAULT_MOTION_MODE, false);
-    } else if (hasSavedTracking()) {
-        logDebug('前回の作業が残っています。運動の種類はそのまま再開します。');
     } else {
+        const left = savedTrackingSummary();
+        if (left) {
+            appState.motionMode = null;
+            logDebug(`前回の打点（${left.label}・${left.n}点）が残っています。運動の種類を選び直してください。`);
+        }
         openModePanel();
     }
     logDebug("起動完了。動画を読み込んでください。");
@@ -777,9 +788,10 @@ function showVideoErrorDialog(err) {
             : '動画の読み込みに失敗しました';
     }
     const body = unsupported ? `
-        <p style="margin-bottom:10px;">この動画の形式が、いま使っているブラウザに対応していません。
-        <b>iPhone / iPad の「高効率」（HEVC）で撮った動画</b>でよく起きます。</p>
-        <p style="margin-bottom:6px;"><b>どれかひとつで直ります。</b></p>
+        <p style="margin-bottom:10px;">この動画の形式が、いま使っているブラウザに対応していないか、
+        ファイルが途中で壊れています。いちばん多いのは
+        <b>iPhone / iPad の「高効率」（HEVC）で撮った動画</b>を、他の端末のブラウザで開いたときです。</p>
+        <p style="margin-bottom:6px;"><b>HEVC が原因なら、どれかひとつで直ります。</b></p>
         <ul style="margin:0 0 10px 18px; line-height:1.7;">
             <li><b>撮った iPad / iPhone の Safari でこのページを開く</b>（いちばん簡単。そのまま開けます）</li>
             <li>撮り直せるなら、端末の <b>設定 &gt; カメラ &gt; フォーマット</b> を
@@ -4566,8 +4578,12 @@ function downloadBlob(blob, filename) {
     link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // iOS Safari はクリック直後に revoke すると保存が空振りすることがあるので、
+    // 少し待ってから片付ける（他のブラウザでも害はない）。
+    setTimeout(() => {
+        try { document.body.removeChild(link); } catch (e) { /* 既に外れている */ }
+        URL.revokeObjectURL(url);
+    }, 10000);
 }
 
 // --- ダイアログの制御 ---
@@ -4635,6 +4651,7 @@ window.frameTimeOf = frameTimeOf;
 window.seekTimeOf = seekTimeOf;
 window.loadSampleVideo = loadSampleVideo;
 window.loadSampleByUrl = loadSampleByUrl;
+window.persistState = persistState;
 window.setMotionMode = setMotionMode;
 window.openModePanel = openModePanel;
 window.closeModePanel = closeModePanel;
