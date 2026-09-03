@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-03b';
+const APP_VERSION = '2026-09-04a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -48,6 +48,11 @@ const appState = {
     // physicsFpsMultiplier = 真の撮影fps ÷ videoFps。既定1（補正なし）。
     // frameTimeOf(物理時間)だけに乗算し、seekTimeOf(動画シーク)は絶対に触らない。
     physicsFpsMultiplier: 1,
+    // 提出画像で vy-t の傾きを測る区間（秒）。{a,b} または null。
+    // 「初め止まっている」区間を除いて g を読ませるための機能で、vy 専用。
+    slopeRange: null,
+    // 提出画像に傾きを出すか（既定はオン。オンなのに区間未設定なら保存させない）
+    showSlope: true,
     slowMotionCaptureFps: null, // ユーザーが入力した「実際の撮影fps」。未設定ならnull
     rawKinematics: false, // true=速度・加速度のスムージングを無効化し従来の厳密差分を使う
     scaleSkipped: false,  // 「スケールなしで進む」を選んだか（px単位のまま続行）
@@ -73,6 +78,11 @@ const MOTION_MODES = {
     },
     'oblique': {
         label: '斜方投射', ySign: 1, xSign: 1,
+        axisText: '上向き・右向きが正', graphs: ['x-t', 'y-t', 'vx-t', 'vy-t']
+    },
+    // 4種のどれでもない運動を測りたいとき用。数学と同じ向き（右・上が正）にしておく
+    'custom': {
+        label: 'カスタム', ySign: 1, xSign: 1,
         axisText: '上向き・右向きが正', graphs: ['x-t', 'y-t', 'vx-t', 'vy-t']
     }
 };
@@ -579,9 +589,7 @@ const SAMPLE_LIST = [
     { file: 'samples/free_fall.mp4',           name: '自由落下',       hint: 'v0=0・約1.6m落下' },
     { file: 'samples/vertical_throw.mp4',      name: '鉛直投げ上げ',   hint: '上がって戻ってくる' },
     { file: 'samples/projectile.mp4',          name: '水平投射',       hint: '水平に投げ出した球' },
-    { file: 'samples/oblique_throw.mp4',       name: '斜方投射',       hint: '斜め45°に打ち上げ' },
-    { file: 'samples/collision_elastic.mp4',   name: '衝突（弾性）',   hint: '動く球が静止球に・物体2つ' },
-    { file: 'samples/collision_inelastic.mp4', name: '衝突（合体）',   hint: 'くっついて動く・物体2つ' }
+    { file: 'samples/oblique_throw.mp4',       name: '斜方投射',       hint: '斜め45°に打ち上げ' }
 ];
 
 function setupSampleLoad() {
@@ -3717,7 +3725,11 @@ const GRAPH_TYPE_LABELS = {
     'ax-t': 'ax-t', 'ay-t': 'ay-t', 'a-t': '加速度-t'
 };
 
-function openGraphDialog(graphType) {
+// opts.initialRange … 前に選んだ区間を復元する {a,b}
+// opts.onClose(range) … 閉じたときに選択区間（未選択なら null）を返す
+// opts.hint … 下部の説明文を差し替える
+function openGraphDialog(graphType, opts) {
+    opts = opts || {};
     const overlay = document.getElementById('dialog-overlay');
     const titleEl = document.getElementById('dialog-title');
     const bodyEl = document.getElementById('dialog-body');
@@ -3738,7 +3750,7 @@ function openGraphDialog(graphType) {
         <div class="graph-dialog-readout" id="ggd-readout"></div>
         <div class="graph-dialog-canvas-wrap"><canvas id="ggd-canvas"></canvas></div>
         <div class="graph-dialog-foot">
-            <span class="graph-dialog-hint">グラフ上を横にドラッグ → その範囲だけの傾きを測定${
+            <span class="graph-dialog-hint">${opts.hint || 'グラフ上を横にドラッグ → その範囲だけの傾きを測定'}${
                 series.edgeCut ? '<br>両端の点は加速度の精度が出ないため表示していません' : ''}</span>
             <button class="btn btn-secondary btn-small" id="ggd-clear">選択解除</button>
         </div>
@@ -3753,7 +3765,8 @@ function openGraphDialog(graphType) {
 
     const cv = document.getElementById('ggd-canvas');
     const readout = document.getElementById('ggd-readout');
-    let selRange = null; // 横軸(データ座標)の選択範囲 {a, b}
+    // 横軸(データ座標=時刻s)の選択範囲 {a, b}
+    let selRange = opts.initialRange ? { a: opts.initialRange.a, b: opts.initialRange.b } : null;
 
     const redraw = () => {
         drawOneGraph(cv, graphType, data, kin, unit);
@@ -3847,6 +3860,7 @@ function openGraphDialog(graphType) {
     document.getElementById('ggd-clear').addEventListener('click', () => { selRange = null; redraw(); });
 
     const cleanup = () => {
+        if (opts.onClose) opts.onClose(selRange ? { a: Math.min(selRange.a, selRange.b), b: Math.max(selRange.a, selRange.b) } : null);
         overlay.style.display = 'none';
         btnOk.textContent = okOriginal;
         btnCancel.style.display = '';
@@ -4370,7 +4384,7 @@ async function composeReport(target, strobeCanvas, verify) {
         ctx.strokeStyle = UI_COLORS.grid;
         ctx.lineWidth = 2;
         ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
-        drawSlopeChip(ctx, b, b.type, kin, unit);
+        drawSlopeChip(ctx, b, b.type, kin, unit, tmp._transform);
     }
     GRAPH_SCALE = 1;
 
@@ -4400,21 +4414,69 @@ async function composeReport(target, strobeCanvas, verify) {
 // 速度－時刻グラフには、全区間の傾き（＝平均加速度）と R² をその場に印字する。
 // 授業の成果は「重力加速度の大きさを求める」ことなので、提出物の中に数値が
 // 無いと、生徒が画面から書き写す一手間が増えるし、班ごとの比較もしにくい。
-const SLOPE_CHIP_TYPES = { 'vy-t': 'vy', 'vx-t': 'vx', 'v-t': '速さ' };
-function drawSlopeChip(ctx, box, type, kin, unit) {
-    if (!SLOPE_CHIP_TYPES[type]) return;
-    const series = graphSeriesFor(type, kin, unit);
+// 傾きを印字するのは vy–t だけ。授業の目的は「重力加速度の大きさを求める」ことなので、
+// 基準の違う数値（vx や 速さ の傾き）を同じ画像に並べない。
+const SLOPE_CHIP_TYPES = { 'vy-t': 'vy' };
+
+// 傾きを測る区間に入る点だけを返す（区間が未設定なら全部）
+function slopeSampleOf(series, range) {
     const idx = series.xv.map((_, i) => i)
         .filter(i => Number.isFinite(series.xv[i]) && Number.isFinite(series.yv[i]));
-    if (idx.length < 3) return;
-    const xs = idx.map(i => series.xv[i]), ys = idx.map(i => series.yv[i]);
+    let xs = idx.map(i => series.xv[i]), ys = idx.map(i => series.yv[i]);
+    if (range) {
+        const lo = Math.min(range.a, range.b), hi = Math.max(range.a, range.b);
+        const pairs = xs.map((x, i) => [x, ys[i]]).filter(([x]) => x >= lo && x <= hi);
+        xs = pairs.map(p => p[0]); ys = pairs.map(p => p[1]);
+    }
+    return { xs, ys };
+}
+
+// レポートのグラフに、選んだ区間の帯と回帰直線を重ねる。
+// tr は drawOneGraph が canvas に残した座標変換（無ければ何もしない）。
+function drawSlopeBand(ctx, box, tr, range, xs, ys, slope) {
+    if (!tr || !range || slope === null) return;
+    const lo = Math.max(Math.min(range.a, range.b), tr.minX);
+    const hi = Math.min(Math.max(range.a, range.b), tr.maxX);
+    if (!(hi > lo)) return;
+    const toCX = (v) => box.x + tr.padL + ((v - tr.minX) / (tr.maxX - tr.minX)) * tr.plotW;
+    const toCY = (v) => box.y + tr.padT + tr.plotH - ((v - tr.minY) / (tr.maxY - tr.minY)) * tr.plotH;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(box.x + tr.padL, box.y + tr.padT, tr.plotW, tr.plotH);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(11, 107, 203, 0.10)';
+    ctx.fillRect(toCX(lo), box.y + tr.padT, toCX(hi) - toCX(lo), tr.plotH);
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    ctx.strokeStyle = UI_COLORS.accent;
+    ctx.lineWidth = 4;
+    ctx.setLineDash([12, 7]);
+    ctx.beginPath();
+    ctx.moveTo(toCX(lo), toCY(my + slope * (lo - mx)));
+    ctx.lineTo(toCX(hi), toCY(my + slope * (hi - mx)));
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawSlopeChip(ctx, box, type, kin, unit, tr) {
+    if (!SLOPE_CHIP_TYPES[type]) return;
+    if (!appState.showSlope) return;
+    const range = appState.slopeRange;
+    const series = graphSeriesFor(type, kin, unit);
+    const { xs, ys } = slopeSampleOf(series, range);
+    if (xs.length < 3) return;
     const slope = slopeOf(xs, ys);
     if (slope === null) return;
+
+    drawSlopeBand(ctx, box, tr, range, xs, ys, slope);
 
     const lines = [`傾き ${fmtSig3(slope)} ${unit}/s²  ＝ 平均加速度`];
     // cm で測っていれば m/s² も添える（板書の g = 9.8 m/s² と直接見比べられる）
     if (unit === 'cm') lines.push(`= ${fmtSig3(slope / 100)} m/s²    R² = ${r2Of(xs, ys)}`);
     else lines.push(`R² = ${r2Of(xs, ys)}`);
+    lines.push(range
+        ? `選んだ区間 ${range.a.toFixed(2)}–${range.b.toFixed(2)} s の ${xs.length} 点`
+        : `全区間 ${xs.length} 点`);
 
     const fs = 20;
     const pad = 10;
@@ -4438,6 +4500,7 @@ function drawSlopeChip(ctx, box, type, kin, unit) {
     });
     ctx.restore();
 }
+
 
 function reportDateText() {
     const d = new Date();
@@ -4481,166 +4544,241 @@ function stampVerificationCode(canvas, code) {
     ctx.restore();
 }
 
+// --- 提出パネル --------------------------------------------------------
+// 「実験結果を保存」の一本道。ストロボの見た目を決め、傾きの区間を決め、
+// 画像を保存する。OKボタンは置かない（何が確定するのか生徒に伝わらないため）。
+// 出口は「保存する」か「×で閉じる」だけ。
 function setupStrobe() {
-    const btn = document.getElementById('btn-strobe');
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-        if (strobePoints(1).length < 2) {
-            showInputDialog('ストロボ写真', '<p>この物体の追跡点が2点以上必要です。<br>十字を対象に合わせて「確定」で点を打ってから使ってください。</p>', '', () => {});
+    const btn = document.getElementById('btn-submit');
+    const overlay = document.getElementById('submit-overlay');
+    if (!btn || !overlay) return;
+
+    const cv = document.getElementById('strobe-preview');
+    const finalImg = document.getElementById('strobe-final');
+    const longPress = document.getElementById('strobe-longpress');
+    const status = document.getElementById('strobe-status');
+    const saveBtn = document.getElementById('btn-strobe-save');
+    const slopeRow = document.getElementById('submit-slope');
+    const slopeChk = document.getElementById('slope-show');
+    const slopeState = document.getElementById('slope-state');
+    const reportChk = document.getElementById('strobe-report');
+
+    const strobeDisplayMode = () => {
+        const el = document.querySelector('input[name="strobe-mode"]:checked');
+        return el ? el.value : 'dots';
+    };
+
+    // 傾きは vy–t に描くので、そのグラフを出さない設定なら傾きの話は出さない
+    const slopeApplicable = () =>
+        reportChk.checked && getSelectedGraphTypes().includes('vy-t');
+    const slopeBlocking = () =>
+        slopeApplicable() && appState.showSlope && !appState.slopeRange;
+
+    let prepared = null, preparedURL = null, preparing = null;
+
+    const clearPrepared = () => {
+        prepared = null;
+        if (preparedURL) { URL.revokeObjectURL(preparedURL); preparedURL = null; }
+        if (finalImg) { finalImg.hidden = true; finalImg.removeAttribute('src'); }
+        if (longPress) longPress.hidden = true;
+        cv.hidden = false;
+    };
+
+    // 保存ボタンの見た目は端末で変える。パソコンは直ダウンロード、
+    // iPad/iPhone/Android は共有シート（「写真に保存」が選べる）。
+    const refreshSaveButton = () => {
+        const share = isHandheld();
+        const icon = document.getElementById('save-icon');
+        const label = document.getElementById('save-label');
+        if (icon) icon.textContent = share ? 'ios_share' : 'download';
+        if (label) label.textContent = share ? '画像を共有・保存' : '画像を保存';
+        const blocked = slopeBlocking();
+        saveBtn.disabled = blocked;
+        saveBtn.title = blocked ? '傾きの区間を決めてください' : '';
+    };
+
+    const refreshSlopeUI = () => {
+        const on = slopeApplicable();
+        slopeRow.hidden = !on;
+        slopeChk.checked = appState.showSlope;
+        const r = appState.slopeRange;
+        if (!appState.showSlope) {
+            slopeState.textContent = '';
+            slopeState.className = 'submit-slope-state';
+        } else if (r) {
+            slopeState.textContent = `区間 ${r.a.toFixed(2)}–${r.b.toFixed(2)} 秒`;
+            slopeState.className = 'submit-slope-state';
+        } else {
+            slopeState.textContent = '区間が未設定です（決めるまで保存できません）';
+            slopeState.className = 'submit-slope-state warn';
+        }
+        refreshSaveButton();
+    };
+
+    // 合成中に設定が変わったら捨てずに覚えておき、終わり次第もう一度生成する
+    let busy = false, again = false;
+    const regen = async () => {
+        if (busy) { again = true; return; }
+        busy = true;
+        do {
+            again = false;
+            const n = parseInt(document.getElementById('strobe-n').value);
+            const r = parseInt(document.getElementById('strobe-r').value);
+            const mode = strobeDisplayMode();
+            document.getElementById('strobe-n-val').textContent = n;
+            document.getElementById('strobe-r-val').textContent = r;
+            const rLabel = document.getElementById('strobe-r-label');
+            if (rLabel) rLabel.textContent = mode === 'dots' ? '点の大きさ' : 'パッチ半径(px)';
+            if (status) status.textContent = '合成中…';
+            const count = await generateStrobe(cv, n, r,
+                (p) => { if (status) status.textContent = `合成中… ${Math.round(p * 100)}%`; }, mode);
+            if (status) status.textContent = count
+                ? (mode === 'dots' ? `${count}点を表示` : `${count}コマを合成`)
+                : '点が不足しています';
+        } while (again);
+        busy = false;
+    };
+
+    // 実際に保存されるものと同じ画像を作る（プレビューにもこれを出す）
+    const buildSubmission = async () => {
+        const verify = await computeVerificationCode();
+        const wantReport = reportChk.checked;
+        let out = cv;
+        if (wantReport) {
+            out = document.createElement('canvas');
+            await composeReport(out, cv, verify);
+        } else {
+            // 写真だけのときも、画像の中に照合コードは必ず焼き込む
+            stampVerificationCode(cv, verify.code);
+        }
+        const blob = await new Promise(res => out.toBlob(res, 'image/png'));
+        if (!blob) throw new Error('PNGの生成に失敗しました');
+        const kind = wantReport ? 'report' : (strobeDisplayMode() === 'dots' ? 'strobe_dots' : 'strobe');
+        const tagged = await pngWithMetadata(blob, {
+            'tracker-code': verify.code,
+            'tracker-hash': verify.hex,
+            'tracker-mode': currentMode().label,
+            'tracker-points': String(strobePoints(1).length),
+            'tracker-video': appState.videoName || '',
+            'tracker-version': APP_VERSION,
+            'Software': '動画解析トラッカー'
+        });
+        return { blob: tagged, code: verify.code,
+                 filename: `${kind}_${verify.code.replace('-', '')}.png` };
+    };
+
+    // iOS Safari は、タップから時間の空いた（await をまたいだ）保存を黙って
+    // 無視する。合成・ハッシュ・メタデータ埋め込みは重いので、設定が変わるたびに
+    // 先に完成PNGまで作っておき、[保存] のタップでは同期的に届けるだけにする。
+    const prepare = async () => {
+        clearPrepared();
+        refreshSlopeUI();
+        if (!strobePoints(1).length) return;
+        if (slopeBlocking()) {
+            if (status) status.textContent = '傾きの区間を決めると保存できます';
             return;
         }
-        const body = `
-            <div style="display:flex; gap:14px; margin-bottom:6px; font-size:0.85rem; align-items:center; flex-wrap:wrap;">
-                <span>表示:</span>
-                <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
-                    <input type="radio" name="strobe-mode" value="photo" checked>写真（残像）
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
-                    <input type="radio" name="strobe-mode" value="dots">点マーカー
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap; margin-left:auto;">
-                    <input type="checkbox" id="strobe-report" checked>グラフを付けて提出用にする
-                </label>
-            </div>
-            <canvas id="strobe-preview" style="width:100%; border:1px solid #CBD2D9; border-radius:5px; background:#14181D;"></canvas>
-            <img id="strobe-final" alt="提出用の画像" hidden
-                 style="width:100%; border:1px solid #CBD2D9; border-radius:5px; background:#14181D;">
-            <div style="display:flex; gap:14px; margin-top:8px; font-size:0.8rem;">
-                <label style="flex:1;">間引き（Nコマおき）: <span id="strobe-n-val">1</span>
-                    <input type="range" id="strobe-n" min="1" max="10" value="1" style="width:100%;">
-                </label>
-                <label style="flex:1;"><span id="strobe-r-label">パッチ半径(px)</span>: <span id="strobe-r-val">60</span>
-                    <input type="range" id="strobe-r" min="10" max="200" value="60" style="width:100%;">
-                </label>
-            </div>
-            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-                <button class="btn btn-primary" id="btn-strobe-save" style="flex:1;">PNG保存</button>
-                <span id="strobe-status" style="font-size:0.75rem; color:#52606D;"></span>
-            </div>
-            <p style="margin-top:8px; font-size:0.74rem; color:#52606D; line-height:1.55;">
-                画像には<b>照合コード</b>（打った点から作られる8桁）が印字され、PNGの中にも記録されます。
-                同じ動画でも、タップした位置が違えばコードは必ず変わります。<br>
-                <span id="strobe-longpress" hidden>うまく保存できないときは、上の画像を<b>長押し</b>して
-                「写真に追加」でも保存できます。</span>
-            </p>
-        `;
-        showInputDialog('提出用の画像を作る', body, '', () => {});
+        if (status) status.textContent = '書き出しの準備中…';
+        try {
+            const p = await buildSubmission();
+            prepared = p;
+            // 完成画像を <img> で出す。iOS では長押しで「写真に追加」ができる
+            preparedURL = URL.createObjectURL(p.blob);
+            if (finalImg) { finalImg.src = preparedURL; finalImg.hidden = false; cv.hidden = true; }
+            if (longPress) longPress.hidden = false;
+            if (status) status.textContent = `保存できます（照合コード ${p.code}）`;
+        } catch (e) {
+            if (status) status.textContent = '準備に失敗しました: ' + (e && e.message);
+            logDebug('提出画像の準備に失敗: ' + (e && e.message));
+        }
+        refreshSaveButton();
+    };
+    const refresh = () => { preparing = regen().then(prepare); return preparing; };
 
-        const cv = document.getElementById('strobe-preview');
-        const status = document.getElementById('strobe-status');
-        const strobeDisplayMode = () => {
-            const el = document.querySelector('input[name="strobe-mode"]:checked');
-            return el ? el.value : 'photo';
-        };
-        // 合成中に設定が変わったら捨てずに覚えておき、終わり次第もう一度生成する
-        let busy = false, again = false;
-        const regen = async () => {
-            if (busy) { again = true; return; }
-            busy = true;
-            do {
-                again = false;
-                const n = parseInt(document.getElementById('strobe-n').value);
-                const r = parseInt(document.getElementById('strobe-r').value);
-                const mode = strobeDisplayMode();
-                document.getElementById('strobe-n-val').textContent = n;
-                document.getElementById('strobe-r-val').textContent = r;
-                const rLabel = document.getElementById('strobe-r-label');
-                if (rLabel) rLabel.textContent = mode === 'dots' ? '点の大きさ' : 'パッチ半径(px)';
-                if (status) status.textContent = '合成中…';
-                const count = await generateStrobe(cv, n, r,
-                    (p) => { if (status) status.textContent = `合成中… ${Math.round(p * 100)}%`; }, mode);
-                if (status) status.textContent = count
-                    ? (mode === 'dots' ? `${count}点を表示` : `${count}コマを合成`)
-                    : '点が不足しています';
-            } while (again);
-            busy = false;
-        };
-        // --- 提出画像を「押す前に」作っておく -------------------------------
-        // iOS Safari は、タップから時間の空いた（await をまたいだ）保存を黙って
-        // 無視することがある。合成・ハッシュ・メタデータ埋め込みは重いので、
-        // 設定が変わるたびに先に完成PNGまで作っておき、[保存] のタップでは
-        // 同期的に共有／ダウンロードを呼ぶだけにする。
-        const finalImg = document.getElementById('strobe-final');
-        const longPress = document.getElementById('strobe-longpress');
-        let prepared = null, preparedURL = null, preparing = null;
+    document.getElementById('strobe-n').addEventListener('change', refresh);
+    document.getElementById('strobe-r').addEventListener('change', refresh);
+    reportChk.addEventListener('change', refresh);
+    document.querySelectorAll('input[name="strobe-mode"]').forEach(el =>
+        el.addEventListener('change', refresh));
 
-        const clearPrepared = () => {
-            prepared = null;
-            if (preparedURL) { URL.revokeObjectURL(preparedURL); preparedURL = null; }
-            if (finalImg) { finalImg.hidden = true; finalImg.removeAttribute('src'); }
-            if (longPress) longPress.hidden = true;
-            cv.hidden = false;
-        };
-
-        // 実際に保存されるものと同じ画像を作る（プレビューにもこれを出す）
-        const buildSubmission = async () => {
-            const verify = await computeVerificationCode();
-            const wantReport = document.getElementById('strobe-report').checked;
-            let out = cv;
-            if (wantReport) {
-                out = document.createElement('canvas');
-                await composeReport(out, cv, verify);
-            } else {
-                // 写真だけのときも、画像の中に照合コードは必ず焼き込む
-                stampVerificationCode(cv, verify.code);
-            }
-            const blob = await new Promise(res => out.toBlob(res, 'image/png'));
-            if (!blob) throw new Error('PNGの生成に失敗しました');
-            const kind = wantReport ? 'report' : (strobeDisplayMode() === 'dots' ? 'strobe_dots' : 'strobe');
-            const tagged = await pngWithMetadata(blob, {
-                'tracker-code': verify.code,
-                'tracker-hash': verify.hex,
-                'tracker-mode': currentMode().label,
-                'tracker-points': String(strobePoints(1).length),
-                'tracker-video': appState.videoName || '',
-                'tracker-version': APP_VERSION,
-                'Software': '動画解析トラッカー'
-            });
-            return { blob: tagged, code: verify.code,
-                     filename: `${kind}_${verify.code.replace('-', '')}.png` };
-        };
-
-        const prepare = async () => {
-            clearPrepared();
-            if (!strobePoints(1).length) return;
-            if (status) status.textContent = '書き出しの準備中…';
-            try {
-                const p = await buildSubmission();
-                prepared = p;
-                // 完成画像を <img> で出す。iOS では長押しで「写真に追加」ができる
-                preparedURL = URL.createObjectURL(p.blob);
-                if (finalImg) { finalImg.src = preparedURL; finalImg.hidden = false; cv.hidden = true; }
-                if (longPress) longPress.hidden = false;
-                if (status) status.textContent = `保存できます（照合コード ${p.code}）`;
-            } catch (e) {
-                if (status) status.textContent = '準備に失敗しました: ' + (e && e.message);
-                logDebug('提出画像の準備に失敗: ' + (e && e.message));
-            }
-        };
-        // 設定変更 → ストロボを描き直し → 完成PNGを作り直す、を1本にまとめる
-        const refresh = () => { preparing = regen().then(prepare); return preparing; };
-
-        document.getElementById('strobe-n').addEventListener('change', refresh);
-        document.getElementById('strobe-r').addEventListener('change', refresh);
-        document.getElementById('strobe-report').addEventListener('change', refresh);
-        document.querySelectorAll('input[name="strobe-mode"]').forEach(el =>
-            el.addEventListener('change', refresh));
-        // [保存] のタップは同期で完結させる（iOS Safari の保存はここが命）
-        document.getElementById('btn-strobe-save').addEventListener('click', () => {
-            if (!prepared) {
-                if (status) status.textContent = '準備中です。数秒待ってもう一度押してください。';
-                if (!preparing) refresh();
-                (preparing || Promise.resolve()).then(() => {
-                    if (prepared && status) status.textContent =
-                        `準備できました。もう一度［PNG保存］を押してください（照合コード ${prepared.code}）`;
-                });
-                return;
-            }
-            deliverSubmission(prepared, status);
-            if (prepared) logDebug(`提出用画像を保存: 照合コード ${prepared.code}`);
-        });
+    slopeChk.addEventListener('change', () => {
+        appState.showSlope = slopeChk.checked;
         refresh();
     });
+
+    // 区間を決める画面は、グラフの全画面表示をそのまま使う（操作を覚え直さなくていい）
+    document.getElementById('btn-slope-range').addEventListener('click', () => {
+        openGraphDialog('vy-t', {
+            initialRange: appState.slopeRange,
+            hint: '傾きを測る区間を、グラフ上で横にドラッグして選んでください（タップで解除）',
+            onClose: (range) => {
+                appState.slopeRange = range;
+                logDebug(range
+                    ? `傾きの区間: ${range.a.toFixed(3)}–${range.b.toFixed(3)} 秒`
+                    : '傾きの区間: 未設定');
+                refresh();
+            }
+        });
+    });
+
+    // [保存] のタップは同期で完結させる（iOS Safari の保存はここが命）
+    saveBtn.addEventListener('click', () => {
+        if (slopeBlocking()) {
+            if (status) status.textContent = '先に「傾きの区間を決める」を押してください';
+            return;
+        }
+        if (!prepared) {
+            if (status) status.textContent = '準備中です。数秒待ってもう一度押してください。';
+            if (!preparing) refresh();
+            (preparing || Promise.resolve()).then(() => {
+                if (prepared && status) status.textContent =
+                    `準備できました。もう一度［保存］を押してください（照合コード ${prepared.code}）`;
+            });
+            return;
+        }
+        deliverSubmission(prepared, status);
+        logDebug(`提出用画像を保存: 照合コード ${prepared.code}`);
+    });
+
+    const close = () => { overlay.style.display = 'none'; clearPrepared(); };
+    document.getElementById('submit-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    btn.addEventListener('click', () => {
+        if (strobePoints(1).length < 2) {
+            showInputDialog('実験結果を保存',
+                '<p>この物体の追跡点が2点以上必要です。<br>十字を対象に合わせて「確定」で点を打ってから使ってください。</p>',
+                '', () => {});
+            return;
+        }
+        overlay.style.display = 'flex';
+        refresh();
+    });
+}
+
+// パソコンでは共有ダイアログを出さず直接ダウンロードする。
+// iPadOS は既定で Mac と同じUAを名乗るため、UAだけでは MacBook と区別できない。
+// タッチ点数を併せて見る（iPad=5 / MacBook=0）のが確実。
+// 判定そのものは純粋関数にしてある（実機がなくてもテストできるように）。
+function isHandheldUA(ua, touchPoints) {
+    ua = ua || '';
+    const touch = touchPoints || 0;
+    if (/Windows|CrOS/.test(ua)) return false;          // タッチ対応PCも直ダウンロード
+    if (/iPhone|iPod|iPad|Android/.test(ua)) return true;
+    if (/Linux/.test(ua) && !/Android/.test(ua)) return false;
+    // Mac を名乗るがタッチがある = iPad（iPadOS 13以降の既定のUA）
+    if (/Macintosh|Mac OS X/.test(ua)) return touch > 0;
+    return touch > 0;
+}
+
+function isHandheld() {
+    return isHandheldUA(navigator.userAgent, navigator.maxTouchPoints);
+}
+
+// 共有シートを出すのは「手で持つ端末」かつ「ファイル共有が使える」ときだけ
+function prefersShareSheet() {
+    if (!(navigator.canShare && navigator.share)) return false;
+    return isHandheld();
 }
 
 // 提出画像を届ける。共有シート（写真に保存が選べる）が使える端末ではそちらを
@@ -4650,7 +4788,7 @@ function deliverSubmission(p, status) {
     const done = () => { if (status) status.textContent = `保存しました（照合コード ${p.code}）`; };
     try {
         const file = new File([p.blob], p.filename, { type: 'image/png' });
-        if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+        if (prefersShareSheet() && navigator.canShare({ files: [file] })) {
             navigator.share({ files: [file] }).then(done).catch(err => {
                 if (err && err.name === 'AbortError') {
                     if (status) status.textContent = '保存をやめました';
@@ -4773,6 +4911,9 @@ window.getCrosshairVideoCoord = getCrosshairVideoCoord;
 window.resetZoom = resetZoom;
 window.updateGraph = updateGraph;
 window.openGraphDialog = openGraphDialog;
+window.prefersShareSheet = prefersShareSheet;
+window.isHandheldUA = isHandheldUA;
+window.isHandheld = isHandheld;
 window.deletePoint = deletePoint;
 window.undo = undo;
 window.computeKinematics = computeKinematics;

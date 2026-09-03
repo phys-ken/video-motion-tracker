@@ -222,6 +222,16 @@ body {
     background: var(--accent-soft);
     box-shadow: inset 0 0 0 1px var(--accent);
 }
+/* 5枚目（カスタム）は2列ぶち抜きの横並びにして、4種とは別枠だと見せる */
+.mode-card-wide {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 10px;
+}
+.mode-card-wide .mode-fig { width: 54px; height: 36px; }
 .mode-fig { width: 88px; height: 60px; color: var(--cal); }
 .mode-fig .ax { stroke: currentColor; stroke-width: 1.6; fill: none; }
 .mode-fig .axl { fill: currentColor; font-size: 9px; font-weight: 700; }
@@ -253,6 +263,7 @@ body {
     .mode-panel { padding: 18px 14px; }
     .mode-grid { gap: 8px; }
     .mode-card { padding: 10px 6px 9px; }
+    .mode-card-wide { padding: 7px 8px; gap: 10px; }
     .mode-fig { width: 68px; height: 46px; }
     .mode-name { font-size: 0.8rem; }
     .mode-axis { font-size: 0.68rem; }
@@ -1492,4 +1503,80 @@ body.calibrating .canvas-container {
     .scale-banner { font-size: 0.76rem; padding: 7px 10px; gap: 6px; }
     .scale-banner-text { flex-basis: 100%; }
     .undo-badge { bottom: calc(env(safe-area-inset-bottom, 0px) + 118px); font-size: 0.76rem; }
+}
+
+/* --- 提出パネル ------------------------------------------------------- */
+/* グラフの全画面表示を上に重ねるので、こちらは少しだけ下の階層に置く */
+.submit-overlay { z-index: 990; }
+.dialog { position: relative; }
+.dialog-close {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-sub);
+    cursor: pointer;
+}
+.dialog-close:hover { background: var(--surface-2); color: var(--text); }
+.dialog-close .material-icons-round { font-size: 20px; }
+.submit-row {
+    display: flex; align-items: center; gap: 14px;
+    flex-wrap: wrap; font-size: 0.85rem; margin-bottom: 8px;
+    padding-right: 40px;   /* 閉じるボタンに重ならないように */
+}
+.submit-row-label { color: var(--text-sub); }
+.submit-row label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.submit-row .submit-row-end { margin-left: auto; }
+/* プレビューは高さを抑える。縦長の動画だと画面いっぱいに伸びて、
+   下にある「保存」ボタンや傾きの設定が画面外に押し出されてしまうため。 */
+/* display を指定すると [hidden] が効かなくなるので、明示的に打ち消す */
+.submit-preview[hidden] { display: none; }
+.submit-preview {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    max-height: 42svh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--screen);
+}
+.submit-sliders { display: flex; gap: 14px; margin-top: 8px; font-size: 0.8rem; }
+.submit-sliders label { flex: 1; }
+.submit-sliders input[type="range"] { width: 100%; margin-top: 0; }
+.submit-slope {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 10px; padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    font-size: 0.82rem;
+}
+.submit-slope-check { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.submit-slope-state { color: var(--text-sub); font-size: 0.78rem; }
+.submit-slope-state.warn { color: var(--danger); font-weight: 600; }
+.submit-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.submit-actions .btn { flex: 1; justify-content: center; }
+.submit-status { font-size: 0.75rem; color: var(--text-sub); }
+.submit-note { margin-top: 8px; font-size: 0.74rem; color: var(--text-sub); line-height: 1.55; }
+
+/* --- 最下部のデータ出口 ----------------------------------------------- */
+.data-export-row { display: flex; justify-content: center; margin-top: 4px; }
+.btn-quiet {
+    background: transparent;
+    border: 1px solid var(--line-soft);
+    color: var(--text-sub);
+    font-weight: 500;
+}
+.btn-quiet:hover { background: var(--surface-2); color: var(--text); }
+
+@media (max-width: 600px) {
+    .submit-sliders { flex-direction: column; gap: 8px; }
+    .submit-row { padding-right: 44px; }
+    .submit-preview { max-height: 34svh; }
 }

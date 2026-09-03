@@ -157,7 +157,9 @@ try{
 
  // ---------- 4) 提出画像の保存 ----------
  console.log('\n--- 提出画像の保存 ---');
- await ev(cdp,S,`document.getElementById('btn-strobe').click();await new Promise(r=>setTimeout(r,300));`);
+ // 既定は「傾きを表示する」がオン。区間を決めるまで保存できないので、開く前に決めておく
+ await ev(cdp,S,`appState.slopeRange={a:0.05,b:0.60};return true;`);
+ await ev(cdp,S,`document.getElementById('btn-submit').click();await new Promise(r=>setTimeout(r,300));`);
  let ready=null;
  for(let i=0;i<60;i++){ready=await ev(cdp,S,`
    const img=document.getElementById('strobe-final'),st=document.getElementById('strobe-status');
@@ -168,6 +170,14 @@ try{
    if(ready&&ready.imgShown)break;await sleep(500);}
  ok(ready&&ready.imgShown,`タップ前に完成PNGができている (${ready&&ready.status})`);
  ok(ready&&ready.canvasHidden&&ready.note,'完成画像を表示し、長押し保存の案内を出す');
+ // 縦長の動画でも、保存ボタンと傾きの設定が画面の中に見えていること
+ const reach=await ev(cdp,S,`
+   const b=document.getElementById('btn-strobe-save').getBoundingClientRect();
+   const sl=document.getElementById('submit-slope').getBoundingClientRect();
+   const img=document.getElementById('strobe-final').getBoundingClientRect();
+   return {save:b.top>=0&&b.bottom<=innerHeight+1,slope:sl.bottom<=innerHeight+1,
+           imgH:Math.round(img.height),vh:innerHeight};`);
+ ok(reach.save&&reach.slope,`保存ボタンと傾きの設定が画面内にある（画像の高さ ${reach.imgH}px / 画面 ${reach.vh}px）`);
  const sync=await ev(cdp,S,`
    let seen=null,ticks=0;
    const origClick=HTMLAnchorElement.prototype.click;
@@ -191,7 +201,63 @@ try{
    return got;`);
  ok(Array.isArray(shared)&&shared.length===1&&/\.png$/.test(shared[0]),`共有シートが使えるならそちらへ渡す (${shared&&shared[0]})`);
  await shot('ipad_4b_save.png');
- await ev(cdp,S,`const b=document.getElementById('dialog-btn-ok');if(b)b.click();await new Promise(r=>setTimeout(r,200));`);
+ await ev(cdp,S,`document.getElementById('submit-close').click();await new Promise(r=>setTimeout(r,200));`);
+
+ // ---------- 4b) 傾きの区間と端末判定 ----------
+ console.log('\n--- 傾きの区間と端末判定 ---');
+ // 区間が未設定だと保存できない（チェックは既定でオン）
+ const gate=await ev(cdp,S,`
+   appState.slopeRange=null;appState.showSlope=true;
+   document.getElementById('btn-submit').click();
+   await new Promise(r=>setTimeout(r,900));
+   const st=document.getElementById('slope-state');
+   return {disabled:document.getElementById('btn-strobe-save').disabled,
+           rowShown:!document.getElementById('submit-slope').hidden,
+           warn:st.className.includes('warn'),text:st.textContent};`);
+ ok(gate.rowShown&&gate.disabled&&gate.warn,`区間未設定だと保存ボタンが押せない (${gate.text})`);
+ // 区間を決めると保存できるようになり、画像の中に区間が印字される
+ const set=await ev(cdp,S,`
+   document.getElementById('btn-slope-range').click();
+   await new Promise(r=>setTimeout(r,500));
+   const dlgShown=getComputedStyle(document.getElementById('dialog-overlay')).display!=='none';
+   const panelStill=getComputedStyle(document.getElementById('submit-overlay')).display!=='none';
+   const cv=document.getElementById('ggd-canvas');
+   const r=cv.getBoundingClientRect();
+   const send=(type,x)=>cv.dispatchEvent(new PointerEvent(type,{clientX:x,clientY:r.top+r.height/2,bubbles:true,pointerId:1}));
+   send('pointerdown',r.left+r.width*0.35);send('pointermove',r.left+r.width*0.8);send('pointerup',r.left+r.width*0.8);
+   await new Promise(r2=>setTimeout(r2,200));
+   const readout=document.getElementById('ggd-readout').textContent;
+   document.getElementById('dialog-btn-ok').click();
+   await new Promise(r2=>setTimeout(r2,1500));
+   return {dlgShown,panelStill,readout:readout.slice(0,60),
+           range:appState.slopeRange,
+           disabled:document.getElementById('btn-strobe-save').disabled,
+           state:document.getElementById('slope-state').textContent};`);
+ ok(set.dlgShown&&set.panelStill,'区間ダイアログは提出パネルの上に重なって開く（パネルは消えない）');
+ ok(set.range&&set.range.b>set.range.a,`ドラッグで区間が決まる (${set.state})`);
+ ok(!set.disabled,'区間を決めると保存できるようになる');
+ // 傾きのチェックを外せば区間なしでも保存できる
+ const off=await ev(cdp,S,`
+   appState.slopeRange=null;
+   const c=document.getElementById('slope-show');c.checked=false;
+   c.dispatchEvent(new Event('change'));
+   await new Promise(r=>setTimeout(r,1500));
+   return {disabled:document.getElementById('btn-strobe-save').disabled,showSlope:appState.showSlope};`);
+ ok(!off.disabled&&!off.showSlope,'傾きを出さない設定なら区間なしでも保存できる');
+ // 端末判定: iPad は共有、Windows は直ダウンロード
+ const os=await ev(cdp,S,`
+   const f=window.isHandheldUA;
+   const MAC='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15';
+   const WIN='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36';
+   const IPH='Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1';
+   const AND='Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36';
+   return {ipad:f(MAC,5),mac:f(MAC,0),win:f(WIN,10),iphone:f(IPH,5),android:f(AND,5),
+           here:window.isHandheld(),label:document.getElementById('save-label').textContent};`);
+ ok(os.ipad===true&&os.mac===false,'同じUAでも iPad は共有・MacBook は直ダウンロードに分かれる');
+ ok(os.win===false,'タッチ対応のWindows機でも直ダウンロードになる');
+ ok(os.iphone===true&&os.android===true,'iPhone と Android は共有シート');
+ ok(os.here===true&&/共有/.test(os.label),`いまの端末（iPad相当）では共有の文言になる (${os.label})`);
+ await ev(cdp,S,`document.getElementById('submit-close').click();await new Promise(r=>setTimeout(r,200));`);
 
  // ---------- 5) 開けない動画の案内 ----------
  console.log('\n--- 開けない動画（HEVC相当） ---');

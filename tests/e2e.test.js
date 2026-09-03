@@ -327,7 +327,7 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
         // （2026-08 に発覚。頂点の2コマが消えて時間が飛んでいた）。
         const SAMPLE_FRAMES = [
             ['free_fall.mp4', 35], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
-            ['oblique_throw.mp4', 43], ['collision_elastic.mp4', 93], ['collision_inelastic.mp4', 105]
+            ['oblique_throw.mp4', 43]
         ];
         for (const [name, expected] of SAMPLE_FRAMES) {
             // 直前の読込結果が残っていると待機条件が即成立してしまうので消してから

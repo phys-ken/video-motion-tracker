@@ -138,11 +138,16 @@ async function ev(cdp, S, body) {
                 const r = document.querySelector('.mode-panel').getBoundingClientRect();
                 return { shown: getComputedStyle(ov).display !== 'none',
                          cards: document.querySelectorAll('#mode-grid .mode-card').length,
+                         custom: document.querySelectorAll('#mode-grid [data-mode="custom"]').length,
+                         customWide: (() => { const c = document.querySelector('[data-mode="custom"]');
+                             const g = document.getElementById('mode-grid');
+                             return !!c && Math.abs(c.getBoundingClientRect().width - g.getBoundingClientRect().width) < 4; })(),
                          sampleDisabled: document.getElementById('mode-btn-sample').disabled,
                          fileDisabled: document.getElementById('mode-btn-file').classList.contains('is-disabled'),
                          fits: r.left >= -1 && r.right <= innerWidth + 1 && r.height <= innerHeight + 1,
                          w: Math.round(r.width), h: Math.round(r.height) };`);
-            ok(panel.shown && panel.cards === 4, `起動パネルが4種で出る (${panel.w}x${panel.h})`);
+            ok(panel.shown && panel.cards === 5, `起動パネルが4種＋カスタムで出る (${panel.w}x${panel.h})`);
+            ok(panel.custom === 1 && panel.customWide, 'カスタムは2列ぶち抜きで4種と分けて見せる');
             ok(panel.sampleDisabled && panel.fileDisabled, '選ぶまで読み込みボタンは押せない');
             ok(panel.fits, `パネルが画面に収まる (${V.w}x${V.h})`);
             await shot(`${V.key}_1_mode.png`);

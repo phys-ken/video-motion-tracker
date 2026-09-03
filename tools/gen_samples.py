@@ -207,52 +207,12 @@ def gen_oblique():
     encode("oblique_throw.mp4", frames, W, H)
 
 
-def _collision(name, m1, m2, u1, e, r1, r2):
-    """1次元衝突（横）: 左の球(物体1)が u1 で静止球(物体2)に衝突。反発係数 e。"""
-    W, H, PPM = 960, 540, 300
-    y = 250.0
-    x1, x2 = 100.0, 620.0
-    # 衝突時刻（表面接触）
-    tc = ((x2 - x1) - (r1 + r2)) / (u1 * PPM)
-    # 衝突後速度（運動量保存＋反発係数）
-    v1 = (m1 * u1 - m2 * e * u1) / (m1 + m2)
-    v2 = (m1 * u1 + m1 * e * u1) / (m1 + m2)
-    # 衝突後、速い方が右端に達するまで
-    xc2 = x2  # 衝突時の物体2の位置（静止）
-    t_exit = tc + (W - 40 - r2 - xc2) / (max(v1, v2) * PPM)
-    n = int(t_exit * FPS)
-    frames = []
-    for i in range(n):
-        t = i / FPS
-        f = new_frame(W, H)
-        draw_scale_bar(f, 20, H - 30, PPM)
-        if t <= tc:
-            p1 = x1 + u1 * t * PPM
-            p2 = x2
-        else:
-            dt = t - tc
-            p1 = (x1 + u1 * tc * PPM) + v1 * dt * PPM
-            p2 = x2 + v2 * dt * PPM
-            # 合体(e=0)は重なって見えないよう、物体1は接触位置を保って追走
-            if e == 0:
-                p1 = p2 - (r1 + r2) + 1
-        ball(f, p1, y, r1, AMBER)
-        ball(f, p2, y, r2, CYAN)
-        frames.append(f)
-    encode(name, frames, W, H)
-    return v1, v2
-
-
 def main():
     print("samples/ を生成中 (60fps, H.264/yuv420p):")
     gen_free_fall()
     gen_vertical_throw()
     gen_projectile()
     gen_oblique()
-    v1, v2 = _collision("collision_elastic.mp4", 2.0, 1.0, 1.5, 1.0, 20, 14)
-    print(f"    弾性(m1:m2=2:1, u1=1.5): v1'={v1:.3f} v2'={v2:.3f} m/s")
-    v1, v2 = _collision("collision_inelastic.mp4", 1.0, 1.0, 2.0, 0.0, 16, 16)
-    print(f"    合体(等質量, u1=2.0): v'={v2:.3f} m/s")
     print("完了。真値の一覧は MANUAL.md を参照。")
 
 
