@@ -4,41 +4,41 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>使い方 — 動画解析トラッカー</title>
-<meta name="description" content="動画解析トラッカーの使い方。自由落下の測定を7ステップで。">
+<meta name="description" content="動画解析トラッカーの操作手順。自由落下を7ステップで測定する。">
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=2026-09-05a">
+<link rel="stylesheet" href="style.css?v=2026-09-05b">
 </head>
 <body>
 <div class="page">
 
 <header class="doc-header">
-    <div class="doc-label">動画解析トラッカー</div>
-    <h1>使い方</h1>
-    <div class="doc-meta">自由落下のれい／iPad／7ステップ</div>
+    <div class="head-main">
+        <h1>動画解析トラッカー　使い方</h1>
+        <p>動画から物体の運動を測り、グラフと重力加速度を求めるアプリです。
+           以下は自由落下を測定する手順です。画面写真の赤い枠が、操作する場所を示します。</p>
+        <p class="app-url">アプリは右のQRコード、または
+           <a href="https://phys-ken.github.io/video-motion-tracker/">phys-ken.github.io/video-motion-tracker/</a> から開きます。</p>
+    </div>
+    <div class="head-qr">
+        <img src="../docs/qr/app.png" alt="アプリのQRコード">
+    </div>
 </header>
 
-<section class="goal">
-    <div>
-        <p class="lead">動画を読む → ものさしを測る → ボールに点を打つ → 画像を保存する。</p>
-        <p class="goal-note">この1枚を提出します。赤い枠が、押すところです。</p>
-        <div class="toolbar">
-            <a class="btn-print" href="manual.pdf" download>PDFを保存</a>
-            <button class="btn-print btn-ghost" id="btn-print">印刷</button>
-        </div>
-    </div>
-    <figure>
-        <img src="img/09b_result.png" alt="提出用の画像。左にボールの残像、右にグラフ、下に照合コード。">
-    </figure>
-</section>
+<div class="toolbar">
+    <a class="btn-print" href="manual.pdf" download>PDFを保存</a>
+    <button class="btn-print btn-ghost" id="btn-print">印刷</button>
+</div>
+
+<div class="steps">
 
 <section class="step">
     <figure>
-        <img src="img/01_mode.png" alt="運動の種類をえらぶパネル。自由落下・投げおろしが赤枠で囲まれている。">
+        <img src="img/01_mode.png" alt="運動の種類を選ぶパネル。自由落下・投げおろしが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
-        <h2><span class="stepno">1</span>運動の種類をえらぶ</h2>
-        <p><span class="ui">自由落下・投げおろし</span> をタップ。</p>
+        <h2><span class="stepno">1</span>運動の種類を選ぶ</h2>
+        <p><span class="ui">自由落下・投げおろし</span> をタップします。</p>
     </div>
 </section>
 
@@ -47,9 +47,9 @@
         <img src="img/02_pick.png" alt="動画を選択ボタンとサンプルで試すボタンが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
-        <h2><span class="stepno">2</span>動画を読みこむ</h2>
-        <p>自分の動画は <span class="ui">動画を選択</span>、練習は <span class="ui">サンプルで試す</span>。</p>
-        <p class="sub">動画は、とった iPad の Safari で開くのが確実です。</p>
+        <h2><span class="stepno">2</span>動画を読み込む</h2>
+        <p>自分で撮影した動画は <span class="ui">動画を選択</span>、練習は <span class="ui">サンプルで試す</span> を使います。
+           動画は撮影した iPad の Safari で開きます。</p>
     </div>
 </section>
 
@@ -59,23 +59,23 @@
     </figure>
     <div class="step-body">
         <h2><span class="stepno">3</span>使う範囲を決める</h2>
-        <p>動き出すコマで <span class="ui">ここから使う</span>、動き終わるコマで <span class="ui">ここまで使う</span>。
-           そのあと <span class="ui">はじめる</span>。</p>
-        <p class="sub">スライダでだいたい、<span class="ui">‹1</span> <span class="ui">1›</span> できっちり。
-           <span class="ui">全部に戻す</span> でいつでも元どおり。</p>
+        <p>運動が始まるコマで <span class="ui">ここから使う</span>、終わるコマで <span class="ui">ここまで使う</span> をタップし、
+           <span class="ui">はじめる</span> を押します。</p>
+        <p>コマはスライダで大まかに合わせ、<span class="ui">‹1</span> <span class="ui">1›</span> で1コマずつ調整します。
+           <span class="ui">全部に戻す</span> で元に戻せます。</p>
     </div>
 </section>
 
 <section class="step">
     <figure>
-        <img src="img/04b_scale_start.png" alt="ものさしの左はしに、赤丸で囲まれた十字を合わせたところ。">
-        <img src="img/04d_scale_arrow.png" alt="反対のはしまで十字を動かし、矢印で長さを選んでいるところ。">
+        <img src="img/04b_scale_start.png" alt="ものさしの左端に、赤丸で囲まれた十字を合わせたところ。">
+        <img src="img/04d_scale_arrow.png" alt="反対の端まで十字を動かし、矢印で長さを選択しているところ。">
     </figure>
     <div class="step-body">
-        <h2><span class="stepno">4</span>ものさしの長さを教える</h2>
-        <p>ものさしのはしに<b>十字</b>を合わせて <span class="ui">スケール始点を確定</span>。
-           反対のはしでも同じようにタップし、<b>長さ（cm）</b>を入力。</p>
-        <p class="sub">とばすと、答えが cm ではなくピクセルのままになります。</p>
+        <h2><span class="stepno">4</span>ものさしの長さを設定する</h2>
+        <p>ものさしの端に十字を合わせ、<span class="ui">スケール始点を確定</span> をタップします。
+           反対の端でも同様にタップし、その長さをセンチメートルで入力します。</p>
+        <p>設定しないと、結果の単位がピクセルのままになります。</p>
     </div>
 </section>
 
@@ -86,38 +86,39 @@
     </figure>
     <div class="step-body">
         <h2><span class="stepno">5</span>ボールに点を打つ</h2>
-        <p>ボールの中心に十字を合わせて <span class="ui">確定（点を打つ）</span>。
-           次のコマへ進むので、最後までくり返します。</p>
-        <p class="sub">まちがえたら <span class="ui">取消</span>。</p>
+        <p>ボールの中心に十字を合わせ、<span class="ui">確定（点を打つ）</span> をタップします。
+           1点打つごとに次のコマへ進むので、最後のコマまで繰り返します。</p>
+        <p>間違えたときは <span class="ui">取消</span> で1点戻ります。</p>
     </div>
 </section>
 
 <section class="step">
     <figure>
-        <img src="img/06_graph.png" alt="y-tグラフとvy-tグラフ。">
+        <img src="img/06_graph.png" alt="位置と速度のグラフ。">
     </figure>
     <div class="step-body">
-        <h2><span class="stepno">6</span>グラフを見る</h2>
-        <p>点を打つとグラフがのびていきます。タップすると大きくなります。</p>
+        <h2><span class="stepno">6</span>グラフを確認する</h2>
+        <p>点を打つとグラフが伸びます。グラフをタップすると拡大表示になります。</p>
     </div>
 </section>
 
 <section class="step">
     <figure>
-        <img src="img/08_slope.png" alt="vy-tグラフを横にドラッグして区間をえらび、傾きが赤枠で示されている。">
+        <img src="img/08_slope.png" alt="速度のグラフを横にドラッグして区間を選び、傾きが赤枠で示されている。">
         <img src="img/09c_save_controls.png" alt="傾きの区間を決めるボタンと、画像を共有・保存ボタンが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
-        <h2><span class="stepno">7</span>保存して出す</h2>
-        <p><span class="ui">実験結果を保存</span> → <span class="ui">傾きの区間を決める</span> でグラフを<b>横にドラッグ</b>。
-           この傾きが<b>重力加速度</b>です。</p>
-        <p><span class="ui">画像を共有・保存</span> で写真に保存して提出します。</p>
-        <p class="sub">画像には照合コード（8けた）が入ります。</p>
+        <h2><span class="stepno">7</span>結果を保存する</h2>
+        <p><span class="ui">実験結果を保存</span> を開き、<span class="ui">傾きの区間を決める</span> でグラフを横にドラッグして
+           区間を選びます。この傾きが重力加速度です。</p>
+        <p><span class="ui">画像を共有・保存</span> で写真に保存し、提出します。画像には8桁の照合コードが入ります。</p>
     </div>
 </section>
 
+</div>
+
 <footer class="doc-footer">
-    <a href="../">アプリを開く</a> ／ <a href="../guide/">実験のやり方</a>
+    <a href="../">アプリを開く</a>　／　<a href="../guide/">実験の手順書</a>
 </footer>
 
 </div>

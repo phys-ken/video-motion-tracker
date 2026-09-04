@@ -22,8 +22,8 @@
 
 **使い方**は画面写真つきの1ページで、アプリの操作だけを7ステップで説明します。
 押す場所は画像の中に**赤枠**で示してあります。配布用の
-[PDF](https://phys-ken.github.io/video-motion-tracker/manual/manual.pdf)（A4・3ページ）も
-リポジトリに置いてあります（`manual/manual.pdf`）。
+[PDF](https://phys-ken.github.io/video-motion-tracker/manual/manual.pdf)は**A4・1枚**で、
+リポジトリにも置いてあります（`manual/manual.pdf`）。
 **手順書**は実験そのもの（何を用意し、どう撮るか）の説明です。
 
 誤り訂正レベル H（30%）で作ってあるので、印刷が多少かすれても読み取れます。

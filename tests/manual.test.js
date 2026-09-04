@@ -61,7 +61,7 @@ try{
  const pages=(buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g)||[]).length;
  console.log('\n--- 印刷 / PDF ---');
  ok(buf.length>50000, `PDFに書き出せる（${(buf.length/1024).toFixed(0)}KB）`);
- ok(pages>=2 && pages<=6, `A4で ${pages} ページに収まる`);
+ ok(pages===1, `配布用PDFがA4 1枚に収まる（${pages}ページ）`);
  // 配布用PDFがリポジトリに置いてあり、いまのページと大きくずれていないこと
  const shipped=path.join(ROOT,'manual','manual.pdf');
  ok(fs.existsSync(shipped), '配布用PDF（manual/manual.pdf）が置いてある');

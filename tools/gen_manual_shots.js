@@ -63,36 +63,72 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         };
         fs.mkdirSync(OUT, { recursive: true });
 
-        // Tango のマニュアルのように、操作する場所を赤枠で囲ってから撮る。
+        // Tango のマニュアルのように、操作する場所を赤枠と矢印で示してから撮る。
         // 画像の中に「どこを押すのか」が入っていれば、本文を読まなくても通じる。
-        const markOn = (sels) => ev(
-            'for (const s of ' + JSON.stringify(sels) + ') {' +
+        // 枠だけだとアプリの装飾と見分けがつかないので、太くして矢印も添える。
+        const MARK_JS = `
+            window.__mark = function (rect) {
+                const R = 6, PAD = 6, COL = '#E5484D';
+                const box = document.createElement('div');
+                box.setAttribute('data-manual-mark', '1');
+                box.style.cssText = 'position:absolute;pointer-events:none;z-index:99999;' +
+                    'border:' + R + 'px solid ' + COL + ';border-radius:' + (rect.round || 10) + 'px;' +
+                    'box-shadow:0 0 0 3px rgba(255,255,255,.85), 0 0 0 6px rgba(229,72,77,.25);' +
+                    'left:' + (rect.x - PAD) + 'px;top:' + (rect.y - PAD) + 'px;' +
+                    'width:' + (rect.w + PAD * 2) + 'px;height:' + (rect.h + PAD * 2) + 'px;';
+                document.body.appendChild(box);
+                // 余白のある側から矢印を引く。どこにも余地が無ければ矢印は出さない。
+                if (rect.arrow === false) return;
+                const L = 66, room = 82;
+                const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+                let dir = rect.dir || null;
+                if (dir) { /* 指定があればそれに従う */ }
+                else if (rect.x - scrollX > room) dir = 'left';
+                else if (innerWidth - (rect.x + rect.w - scrollX) > room) dir = 'right';
+                else if (rect.y - scrollY > room) dir = 'top';
+                else if (innerHeight - (rect.y + rect.h - scrollY) > room) dir = 'bottom';
+                if (!dir) return;
+                let x1, y1, x2, y2;
+                if (dir === 'left')  { x1 = rect.x - PAD - L; y1 = cy; x2 = rect.x - PAD - 10; y2 = cy; }
+                if (dir === 'right') { x1 = rect.x + rect.w + PAD + L; y1 = cy; x2 = rect.x + rect.w + PAD + 10; y2 = cy; }
+                if (dir === 'top')   { x1 = cx; y1 = rect.y - PAD - L; x2 = cx; y2 = rect.y - PAD - 10; }
+                if (dir === 'bottom'){ x1 = cx; y1 = rect.y + rect.h + PAD + L; x2 = cx; y2 = rect.y + rect.h + PAD + 10; }
+                const minX = Math.min(x1, x2) - 22, minY = Math.min(y1, y2) - 22;
+                const w = Math.abs(x2 - x1) + 44, h = Math.abs(y2 - y1) + 44;
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('data-manual-mark', '1');
+                svg.setAttribute('width', w); svg.setAttribute('height', h);
+                svg.style.cssText = 'position:absolute;pointer-events:none;z-index:99999;' +
+                    'left:' + minX + 'px;top:' + minY + 'px;overflow:visible;';
+                svg.innerHTML =
+                    '<defs><marker id="mk-h" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4.2" markerHeight="4.2" orient="auto">' +
+                    '<path d="M0 0 L10 5 L0 10 z" fill="#FFFFFF"/></marker>' +
+                    '<marker id="mk-a" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto">' +
+                    '<path d="M0 0 L10 5 L0 10 z" fill="' + COL + '"/></marker></defs>' +
+                    '<line x1="' + (x1 - minX) + '" y1="' + (y1 - minY) + '" x2="' + (x2 - minX) + '" y2="' + (y2 - minY) +
+                    '" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" marker-end="url(#mk-h)"/>' +
+                    '<line x1="' + (x1 - minX) + '" y1="' + (y1 - minY) + '" x2="' + (x2 - minX) + '" y2="' + (y2 - minY) +
+                    '" stroke="' + COL + '" stroke-width="6" stroke-linecap="round" marker-end="url(#mk-a)"/>';
+                document.body.appendChild(svg);
+            };`;
+        // 複数を囲むときは矢印を出さない（隣の枠や文字に矢が重なるため）
+        const markOn = (sels, dir) => ev(MARK_JS +
+            'const list = ' + JSON.stringify(sels) + ';' +
+            'const one = list.length === 1;' +
+            'for (const s of list) {' +
             '  const e = document.querySelector(s); if (!e) continue;' +
             '  const r = e.getBoundingClientRect();' +
-            '  const d = document.createElement("div");' +
-            '  d.setAttribute("data-manual-mark","1");' +
-            '  d.style.cssText = "position:absolute;pointer-events:none;z-index:99999;" +' +
-            '    "border:3px solid #E5484D;border-radius:9px;" +' +
-            '    "box-shadow:0 0 0 3px rgba(229,72,77,.22);" +' +
-            '    "left:" + (r.left + scrollX - 4) + "px;top:" + (r.top + scrollY - 4) + "px;" +' +
-            '    "width:" + (r.width + 8) + "px;height:" + (r.height + 8) + "px;";' +
-            '  document.body.appendChild(d);' +
+            '  window.__mark({x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height,' +
+            '                 round: 10, arrow: one, dir: ' + JSON.stringify(dir || null) + '});' +
             '}' +
             'await new Promise(r=>setTimeout(r,80));');
 
-        // 映像の上の十字は要素ではないので、画面中央に円を描いて囲う
-        const markCrosshair = (size) => ev(
+        // 映像の上の十字は要素ではないので、画面中央を丸で囲う
+        const markCrosshair = (size, dir) => ev(MARK_JS +
             'const S = ' + (size || 74) + ';' +
             'const r = document.getElementById("tracker-canvas").getBoundingClientRect();' +
-            'const d = document.createElement("div");' +
-            'd.setAttribute("data-manual-mark","1");' +
-            'd.style.cssText = "position:absolute;pointer-events:none;z-index:99999;" +' +
-            '  "border:3px solid #E5484D;border-radius:50%;" +' +
-            '  "box-shadow:0 0 0 3px rgba(229,72,77,.22);" +' +
-            '  "left:" + (r.left + scrollX + r.width/2 - S/2) + "px;" +' +
-            '  "top:"  + (r.top + scrollY + r.height/2 - S/2) + "px;" +' +
-            '  "width:" + S + "px;height:" + S + "px;";' +
-            'document.body.appendChild(d);' +
+            'window.__mark({x: r.left + scrollX + r.width/2 - S/2, y: r.top + scrollY + r.height/2 - S/2,' +
+            '               w: S, h: S, round: S, dir: ' + JSON.stringify(dir || 'top') + '});' +
             'await new Promise(r=>setTimeout(r,80));');
 
         const markOff = () => ev(
@@ -102,7 +138,8 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         // sel で指定した要素を囲む矩形だけを切り出す（pad は余白px）
         const shot = async (name, sel, pad = 10) => {
             const box = await ev(`
-                const els = ${JSON.stringify(sel)}.map(s => document.querySelector(s)).filter(Boolean);
+                const els = ${JSON.stringify(sel)}.map(s => document.querySelector(s)).filter(Boolean)
+                    .concat([...document.querySelectorAll('[data-manual-mark]')]);
                 if (!els.length) return null;
                 // 画面の外にある要素は、いったん見える位置へ送ってから測る
                 // （描画が画面内でしか走らない部品があるため）
@@ -167,7 +204,7 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         await ev(`document.querySelector('[data-mode="free-fall"]').click();
                   await new Promise(r=>setTimeout(r,150));`);
         await markOn(['#mode-btn-file', '#mode-btn-sample']);
-        await shot('02_pick.png', ['.mode-actions', '.mode-foot'], 12);
+        await shot('02_pick.png', ['.mode-actions', '.mode-foot'], 26);
         await markOff();
 
         await ev(`window.closeModePanel();
@@ -181,7 +218,7 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
                   window.seekToFrame(58); await new Promise(r=>setTimeout(r,500));
                   document.getElementById('trim-set-out').click(); await new Promise(r=>setTimeout(r,300));`);
         await markOn(['#trim-set-in', '#trim-set-out']);
-        await shot('03b_trim_controls.png', ['.trim-slider', '.trim-frame', '.trim-jog', '.trim-set-row', '.trim-range'], 12);
+        await shot('03b_trim_controls.png', ['.trim-slider', '.trim-frame', '.trim-jog', '.trim-set-row', '.trim-range'], 20);
         await markOff();
         await ev(`document.getElementById('dialog-btn-ok').click();`);
         for (let i = 0; i < 60; i++) { if (!(await ev(`return appState.isScanning;`))) break; await sleep(500); }
@@ -191,12 +228,12 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         await ev(`appState.viewState.scale = 2.6; await new Promise(r=>setTimeout(r,100));`);
         await centerOn(20, 930);          // ものさしの左端に十字を合わせた状態
         await markCrosshair(70);
-        await shotAroundCrosshair('04b_scale_start.png', -60, -140, 340, 196);
+        await shotAroundCrosshair('04b_scale_start.png', -80, -150, 380, 210);
         await markOff();
         await ev(`window.confirmAtCrosshair(); await new Promise(r=>setTimeout(r,400));`);
         await centerOn(520, 930);         // 右端へ動かすと両矢印が付いてくる
         await markCrosshair(70);
-        await shotAroundCrosshair('04d_scale_arrow.png', -280, -140, 340, 196);
+        await shotAroundCrosshair('04d_scale_arrow.png', -300, -150, 380, 210);
         await markOff();
         await ev(`
             const s=appState;
@@ -218,7 +255,7 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         await shot('05_track.png', ['.canvas-container'], 6);
         await markOff();
         await markOn(['#btn-confirm']);
-        await shot('05b_confirm.png', ['.action-bar'], 6);
+        await shot('05b_confirm.png', ['.action-bar'], 14);
         await markOff();
 
         // 打点を作ってグラフを出す
@@ -260,9 +297,8 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         // ⑦ 保存
         for (let i = 0; i < 60; i++) { if (await ev(`return !document.getElementById('strobe-final').hidden;`)) break; await sleep(500); }
         await markOn(['#btn-slope-range', '#btn-strobe-save']);
-        await shot('09c_save_controls.png', ['.submit-slope', '.submit-actions'], 12);
+        await shot('09c_save_controls.png', ['.submit-slope', '.submit-actions'], 20);
         await markOff();
-        await shot('09b_result.png', ['#strobe-final'], 6);
     } catch (e) { console.error('❌ ' + e.message); process.exitCode = 1; }
     finally { try { ws && ws.close(); } catch (e) {} try { proc.kill(); } catch (e) {}
         try { srv.close(); } catch (e) {} try { fs.rmSync(udd, { recursive: true, force: true }); } catch (e) {} }

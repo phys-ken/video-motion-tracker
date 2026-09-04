@@ -30,24 +30,22 @@ body {
 }
 .page { max-width: 900px; margin: 0 auto; padding: 24px 18px 72px; }
 
-header.doc-header { border-bottom: 3px solid var(--accent); padding: 16px 0 12px; }
-.doc-label { font-size: 0.8rem; color: var(--text-sub); letter-spacing: 0.06em; }
-h1 { font-size: 1.45rem; line-height: 1.4; margin-top: 4px; }
-.doc-meta { font-size: 0.84rem; color: var(--text-sub); margin-top: 6px; }
-
-.goal {
+header.doc-header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 190px);
-    gap: 16px 20px;
-    align-items: center;
-    margin: 18px 0 26px;
-    break-inside: avoid;
+    grid-template-columns: minmax(0, 1fr) 108px;
+    gap: 18px;
+    align-items: start;
+    border-bottom: 3px solid var(--accent);
+    padding: 8px 0 14px;
 }
-.goal-note { font-size: 0.86rem; color: var(--text-sub); margin-top: 6px; }
-.goal .lead { margin: 0; }
-@media (max-width: 640px) { .goal { grid-template-columns: 1fr; } .goal figure { max-width: 220px; } }
+h1 { font-size: 1.4rem; line-height: 1.4; }
+.head-main p { font-size: 0.92rem; margin-top: 8px; }
+.head-qr { text-align: center; }
+.head-qr img { width: 108px; height: auto; display: block; }
+.app-url { font-size: 0.84rem; color: var(--text-sub); margin-top: 6px; }
+.app-url a { color: var(--accent-strong); word-break: break-all; }
 
-.lead { font-size: 1.0rem; font-weight: 700; line-height: 1.7; }
+
 
 /* ---- 手順: 左に画像・右に説明。狭い画面では縦に積む ---------------- */
 /* 手順は1枚ずつのカードにする。線1本で区切るだけだと、どこからどこまでが
@@ -155,7 +153,7 @@ footer.doc-footer {
 }
 footer.doc-footer a { color: var(--accent-strong); }
 
-.toolbar { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 14px 0 0; }
+.toolbar { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 14px 0 18px; }
 .btn-print {
     font: inherit;
     text-decoration: none;
@@ -179,18 +177,45 @@ footer.doc-footer a { color: var(--accent-strong); }
 }
 
 /* ---- 印刷 / PDF ------------------------------------------------- */
-/* iPad の Safari は @page の余白指定が効かないことがあるので、
-   余白と文字サイズは控えめな固定値にして、崩れても読めるようにする。 */
-@page { size: A4 portrait; margin: 12mm; }
+/* A4 1枚に収める。画面では「写真の右に説明」だが、紙では段が細いので
+   「写真の下に説明」に変え、手順を2段組みで流し込む。
+   iPad の Safari は @page の余白指定が効かないことがあるため、
+   余白と文字サイズは控えめな固定値にしている。 */
+@page { size: A4 portrait; margin: 8mm; }
 @media print {
-    body { background: #FFFFFF; font-size: 10.5pt; line-height: 1.6; }
+    body { background: #FFFFFF; font-size: 8.2pt; line-height: 1.5; }
     .page { max-width: none; padding: 0; }
-    .toolbar { display: none; }
-    .step { grid-template-columns: minmax(0, 44%) minmax(0, 1fr); padding: 9px 11px 10px; margin-bottom: 8px; }
-    .step h2 { font-size: 11.5pt; }
-    .step p { font-size: 9.5pt; }
-    figure img { border-color: #B0B8C0; max-height: 62mm; }
-    figcaption { font-size: 8pt; }
-    .goal { break-inside: avoid; }
+    .toolbar, .doc-footer { display: none; }
+
+    header.doc-header { grid-template-columns: minmax(0, 1fr) 76px; gap: 10px; padding: 0 0 5px; border-bottom-width: 2px; }
+    h1 { font-size: 13pt; }
+    .head-main p { font-size: 7.8pt; margin-top: 3px; }
+    .head-qr img { width: 76px; }
+    .app-url { font-size: 7.2pt; margin-top: 2px; }
+
+    /* 手順を2段に流す。1手順が段をまたがないようにする */
+    .steps { column-count: 2; column-gap: 5mm; margin-top: 4mm; }
+    .step {
+        display: block;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin: 0 0 4mm;
+        padding: 2.6mm 3mm 3mm;
+        border-width: 1px;
+        border-left-width: 3px;
+        border-radius: 4px;
+    }
+    .step h2 { font-size: 9pt; gap: 5px; margin-bottom: 3px; }
+    .stepno { width: 16px; height: 16px; font-size: 7.4pt; }
+    .step p { font-size: 8pt; margin-bottom: 2px; }
+    .step p.sub { font-size: 7pt; }
+    .ui { font-size: 0.9em; padding: 0 3px; border-radius: 3px; }
+
+    /* 写真は説明の上。2枚あるときは横に並べる */
+    figure { display: flex; gap: 1.6mm; margin-bottom: 2mm; align-items: flex-start; }
+    figure img { flex: 1 1 0; min-width: 0; max-height: 36mm; border-color: #B0B8C0; border-radius: 3px; }
+    figure img + img { margin-top: 0; }
+    figcaption { display: none; }
+
     a { color: inherit; text-decoration: none; }
 }
