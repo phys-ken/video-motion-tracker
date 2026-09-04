@@ -22,9 +22,10 @@
     "test": "node test_logic.js",
     "test:e2e": "node tests/e2e.test.js",
     "test:precision": "node tests/precision.test.js",
-    "test:all": "node test_logic.js && node tests/e2e.test.js && node tests/precision.test.js && node tests/views.test.js && node tests/ipad.test.js && node tests/teacher.test.js",
+    "test:all": "node test_logic.js && node tests/e2e.test.js && node tests/precision.test.js && node tests/views.test.js && node tests/ipad.test.js && node tests/teacher.test.js && node tests/trim.test.js",
     "test:views": "node tests/views.test.js",
     "test:ipad": "node tests/ipad.test.js",
-    "test:teacher": "node tests/teacher.test.js"
+    "test:teacher": "node tests/teacher.test.js",
+    "test:trim": "node tests/trim.test.js"
   }
 }

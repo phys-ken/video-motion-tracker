@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-04a';
+const APP_VERSION = '2026-09-04b';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -257,7 +257,7 @@ function buildDebugReport() {
             + ` / fps=${s.videoFps}${s.fpsMeasured ? '' : '*'} / 時刻表=${s.frameTimes.length}件`,
         `コマ: ${s.currentFrame} / ${s.totalFrames}（範囲 ${s.rangeIn}–${s.rangeOut}）`,
         `打点: ${s.trackingData.length}点 / 物体${s.activeObjectId} / ステップ幅${s.trackingStepSize}`,
-        `校正: スケール=${s.calibration.scaleRatio ? s.calibration.scaleRatio.toFixed(4) + 'cm/px' : '未設定'} / 原点=最初の打点(自動)`
+        `校正: スケール=${s.calibration.scaleRatio ? s.calibration.scaleRatio.toFixed(4) + 'cm/px' : '未設定'} / 原点=最初の打点(自動・非表示)`
             + ` / スロー=${s.slowMotionCaptureFps ? s.slowMotionCaptureFps + 'fps' : 'なし'}`,
         `内部: seekBusy=${seekBusy} pending=${seekPendingFrame} flipTarget=${flipTarget}`
             + ` readyState=${s.videoElement ? s.videoElement.readyState : '-'}`,
@@ -1619,11 +1619,14 @@ function showStepBadge(text, sticky) {
 }
 
 // コマ番号は常に「現在 / 総数」で表示（今どのあたりか一目で分かる）。
+// 生徒に見せる番号は 1 始まり。内部は 0 始まりだが、「80コマの動画」なのに
+// 「コマ 0 / 79」と出るのは、同じ画面の中で数え方が食い違っていて分かりにくい。
 // 再生バーの表示に加え、映像右上の常設カウンタ・トリミングダイアログ・
 // 打点マップの現在位置にも同期する。
+function frameNo(frame) { return frame + 1; }   // 内部(0始まり) → 表示(1始まり)
 function updateFrameLabel(frame) {
     updateHitMapCurrent();
-    const text = `${frame} / ${appState.totalFrames}`;
+    const text = `${frameNo(frame)} / ${frameNo(appState.totalFrames)}`;
     const lbl = document.getElementById('lbl-frame');
     if (lbl) lbl.textContent = text;
     const counter = document.getElementById('frame-counter');
@@ -1655,28 +1658,42 @@ function resetAnalysisRange() {
 }
 
 // シークバー上に選択範囲をシアン（計器/校正の色）で示す
-function updateRangeUI() {
-    const slider = document.getElementById('frame-slider');
-    const lbl = document.getElementById('lbl-range');
+// 「どこを使うか」はスライダの帯で見せる。カットした側は灰色、使う側は青。
+// 文字だけだと、いま何が残っているのかを読み取らないと分からない。
+function paintRangeBand(slider, full) {
+    if (!slider) return;
+    if (full) { slider.style.background = ''; return; }
     const total = Math.max(1, appState.totalFrames);
+    const a = (appState.rangeIn / total) * 100;
+    const b = (appState.rangeOut / total) * 100;
+    slider.style.background =
+        `linear-gradient(90deg, var(--line) 0%, var(--line) ${a}%, ` +
+        `var(--accent) ${a}%, var(--accent) ${b}%, var(--line) ${b}%, var(--line) 100%)`;
+}
+
+function updateRangeUI() {
+    const lbl = document.getElementById('lbl-range');
     const full = appState.rangeIn === 0 && appState.rangeOut === appState.totalFrames;
-    if (slider) {
-        if (full) {
-            slider.style.background = '';
-        } else {
-            const a = (appState.rangeIn / total) * 100;
-            const b = (appState.rangeOut / total) * 100;
-            slider.style.background =
-                `linear-gradient(90deg, var(--line) 0%, var(--line) ${a}%, ` +
-                `var(--accent) ${a}%, var(--accent) ${b}%, var(--line) ${b}%, var(--line) 100%)`;
-        }
+    paintRangeBand(document.getElementById('frame-slider'), full);
+    paintRangeBand(document.getElementById('trim-slider'), full);
+    if (lbl) lbl.textContent = full ? '全体'
+        : `${frameNo(appState.rangeIn)}–${frameNo(appState.rangeOut)}`;
+    // トリミングダイアログを開いている間は、その中の表示も一緒に更新する
+    const trimLbl = document.getElementById('trim-range-lbl');
+    if (trimLbl) {
+        trimLbl.textContent = trimRangeText();
+        trimLbl.classList.toggle('is-trimmed', !full);
     }
-    if (lbl) lbl.textContent = full ? '全体' : `${appState.rangeIn}–${appState.rangeOut}`;
+    const reset = document.getElementById('trim-reset');
+    if (reset) reset.hidden = full;
 }
 
 // 範囲確定時にその範囲だけ複製コマを除外（読込時に持ち越した分。1動画につき1回）
 const DEDUP_RANGE_MAX = 300;
+let trimDialogOpen = false;
 async function maybeDedupRange() {
+    // ダイアログで範囲を動かしている最中は走らせない（閉じるときにまとめて1回）
+    if (trimDialogOpen) return;
     if (appState.dedupDone || !appState.frameTimes.length) return;
     if (appState.trackingData.length > 0) {
         logDebug('計測データがあるためコマ番号を変えられません（重複除外スキップ）');
@@ -1756,8 +1773,10 @@ function drawTrimPreview() {
 
 function trimRangeText() {
     const full = appState.rangeIn === 0 && appState.rangeOut === appState.totalFrames;
-    return full ? '解析範囲: 全体（未カット）'
-        : `解析範囲: コマ ${appState.rangeIn} 〜 ${appState.rangeOut}（${appState.rangeOut - appState.rangeIn + 1} コマ）`;
+    const n = appState.rangeOut - appState.rangeIn + 1;
+    return full
+        ? `全部の ${frameNo(appState.totalFrames)} コマを使います`
+        : `コマ ${frameNo(appState.rangeIn)} 〜 ${frameNo(appState.rangeOut)} の ${n} コマを使います`;
 }
 
 function showTrimDialog(onClose) {
@@ -1775,26 +1794,30 @@ function showTrimDialog(onClose) {
 
     const fps = appState.videoFps ? `${+appState.videoFps.toFixed(2)} fps` : '-- fps';
     const dur = appState.videoDuration ? `${appState.videoDuration.toFixed(2)} 秒` : '';
-    titleEl.textContent = '読み込み完了';
+    // 見出しは「今なにをする画面か」にする（「読み込み完了」は終わったことの報告で、
+    // 次に何をすればいいかを伝えない）。
+    titleEl.textContent = '使う範囲を決める';
     const longVideo = appState.totalFrames + 1 > 600;
     bodyEl.innerHTML = `
-        <div class="trim-info">${appState.totalFrames + 1} コマ / ${fps} / ${dur}</div>
+        <div class="trim-info">${frameNo(appState.totalFrames)} コマ / ${fps} / ${dur}</div>
         ${longVideo ? `<p class="trim-long-warn">長い動画です。解析したい運動の<b>数秒だけ</b>に
-            「ここから」「ここまで」で必ず絞ってください（絞らないと打点マップなど一部の表示が制限されます）。</p>` : ''}
-        <p class="trim-guide">運動していない<b>前後のコマをカット</b>しておくと、あとの点打ちがラクです。<br>
-           スライダで運動の<b>開始</b>コマへ→「ここから」、<b>終了</b>コマへ→「ここまで」。</p>
+            必ず絞ってください（絞らないと打点マップなど一部の表示が制限されます）。</p>` : ''}
+        <p class="trim-guide">運動していない<b>前後のコマを切って</b>おくと、あとの点打ちがラクです。</p>
         <canvas id="trim-preview" width="640" height="300"></canvas>
         <div class="trim-controls">
             <button class="btn-icon" id="trim-prev" title="1コマ戻る"><span class="material-icons-round">chevron_left</span></button>
             <input type="range" id="trim-slider" min="0" max="${appState.totalFrames}" value="${appState.currentFrame}">
             <button class="btn-icon" id="trim-next" title="1コマ進む"><span class="material-icons-round">chevron_right</span></button>
+            <span class="trim-frame" id="trim-frame-lbl">コマ ${frameNo(appState.currentFrame)} / ${frameNo(appState.totalFrames)}</span>
         </div>
-        <div class="trim-controls">
+        <div class="trim-controls trim-set-row">
             <button class="btn btn-secondary btn-small" id="trim-set-in"><span class="material-icons-round">first_page</span>ここから</button>
             <button class="btn btn-secondary btn-small" id="trim-set-out"><span class="material-icons-round">last_page</span>ここまで</button>
-            <span class="trim-frame" id="trim-frame-lbl">コマ ${appState.currentFrame} / ${appState.totalFrames}</span>
+            <button class="btn btn-small btn-quiet" id="trim-reset" hidden>全部に戻す</button>
         </div>
         <div class="trim-range" id="trim-range-lbl">${trimRangeText()}</div>
+        <p class="trim-skip">切らずに<b>はじめる</b>でもかまいません。あとから画面下の
+            <b>［ここから］［ここまで］</b>でやり直せます。</p>
     `;
 
     // ボタンを「はじめる」1つに（cleanupで元へ戻す）
@@ -1803,20 +1826,23 @@ function showTrimDialog(onClose) {
     btnCancel.style.display = 'none';
     overlay.style.display = 'flex';
 
+    trimDialogOpen = true;
     trimPreviewCanvas = document.getElementById('trim-preview');
     drawTrimPreview();
+    updateRangeUI();   // 帯・範囲の文言・「全部に戻す」の出し分けを最初から合わせる
 
-    const refreshRange = () => {
-        const lbl = document.getElementById('trim-range-lbl');
-        if (lbl) lbl.textContent = trimRangeText();
-    };
     document.getElementById('trim-slider').addEventListener('input', (e) => {
         seekToFrame(parseInt(e.target.value));
     });
     document.getElementById('trim-prev').addEventListener('click', () => seekToFrame(appState.currentFrame - 1));
     document.getElementById('trim-next').addEventListener('click', () => seekToFrame(appState.currentFrame + 1));
-    document.getElementById('trim-set-in').addEventListener('click', () => { toggleRangeIn(); refreshRange(); });
-    document.getElementById('trim-set-out').addEventListener('click', () => { toggleRangeOut(); refreshRange(); });
+    document.getElementById('trim-set-in').addEventListener('click', toggleRangeIn);
+    document.getElementById('trim-set-out').addEventListener('click', toggleRangeOut);
+    document.getElementById('trim-reset').addEventListener('click', () => {
+        appState.rangeIn = 0;
+        appState.rangeOut = appState.totalFrames;
+        updateRangeUI(); updateDataTable(); updateGraph();
+    });
 
     const cleanup = () => {
         overlay.style.display = 'none';
@@ -1825,9 +1851,13 @@ function showTrimDialog(onClose) {
         btnCancel.style.display = '';
         const newOk = btnOk.cloneNode(true);
         btnOk.parentNode.replaceChild(newOk, btnOk);
-        // 範囲の先頭から作業を始められるように頭出ししておく
-        seekToFrame(appState.rangeIn);
-        if (onClose) onClose();
+        trimDialogOpen = false;
+        // 複製コマの確認をここで1回だけ済ませ、それが終わってから頭出しする。
+        // 走査とシークを重ねないことが大事（重ねると実コマが消える）。
+        Promise.resolve(maybeDedupRange()).then(() => {
+            seekToFrame(appState.rangeIn);
+            if (onClose) onClose();
+        });
     };
     btnOk.addEventListener('click', cleanup);
 }
@@ -1847,8 +1877,18 @@ function seekToFrame(frame) {
     pumpSeekQueue();
 }
 
+let seekDeferSince = 0;
 function pumpSeekQueue() {
     if (seekBusy || seekPendingFrame === null) return;
+    // 複製除外の走査中は割り込まない。走査は video.currentTime を直接動かすので、
+    // 同時に別のシークを投げると走査側が前のコマを読み、実コマを「複製」と誤判定して
+    // 消してしまう（2026-09 に、前後に静止区間のあるサンプルで実際に22コマ消えた）。
+    if (appState.isScanning) {
+        if (!seekDeferSince) seekDeferSince = Date.now();
+        if (Date.now() - seekDeferSince < 30000) { setTimeout(pumpSeekQueue, 120); return; }
+        logDebug('走査が長引いたため、シークの保留を打ち切ります');
+    }
+    seekDeferSince = 0;
     const frame = seekPendingFrame;
     seekPendingFrame = null;
     seekBusy = true;
@@ -2886,27 +2926,10 @@ function drawTrackingPoints() {
 function drawCalibrationMarkers() {
     const scale = appState.viewState.scale;
     
-    // 原点（＝この物体の最初の打点）を軸で示す。設定させない代わりに、
-    // 「どこが原点になっているか」は必ず目で確かめられるようにする。
-    const originPts = appState.trackingData
-        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame));
-    if (originPts.length) {
-        const o = originOf(originPts);
-        const localO = videoToLocalCanvas(o.x, o.y);
-        appState.ctx.beginPath();
-        appState.ctx.moveTo(localO.x - 40 / scale, localO.y);
-        appState.ctx.lineTo(localO.x + 40 / scale, localO.y);
-        appState.ctx.moveTo(localO.x, localO.y - 40 / scale);
-        appState.ctx.lineTo(localO.x, localO.y + 40 / scale);
-        appState.ctx.strokeStyle = UI_COLORS.calBright;
-        appState.ctx.lineWidth = 1.5 / scale;
-        appState.ctx.stroke();
+    // 原点（＝最初の打点）は映像に描かない。自由落下の出だしのように変位が小さいと、
+    // 原点の十字が次の打点に重なって、狙った位置がまるで見えなくなるため。
+    // 原点であること自体は生徒が意識する必要がなく、グラフの軸ラベルで足りる。
 
-        appState.ctx.fillStyle = UI_COLORS.calBright;
-        appState.ctx.font = `bold ${10 / scale}px ${FONT_SANS}`;
-        appState.ctx.fillText("原点", localO.x + 6 / scale, localO.y - 6 / scale);
-    }
-    
     // スケール描画
     const cal = appState.calibration;
     if (cal.scaleTempStart) {

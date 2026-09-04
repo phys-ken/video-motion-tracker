@@ -18,7 +18,7 @@
     <meta name="twitter:card" content="summary">
     <!-- アイコンフォントは同梱(学校MDMフィルタ対策)。本文は端末ネイティブ書体(CDN依存なし) -->
     <link rel="stylesheet" href="vendor/material-icons-round.css">
-    <link rel="stylesheet" href="styles.css?v=2026-09-04a">
+    <link rel="stylesheet" href="styles.css?v=2026-09-04b">
 </head>
 <body>
     <div class="app-container">
@@ -48,12 +48,14 @@
                 <span class="mode-chip-name" id="mode-chip-name">—</span>
                 <span class="mode-chip-axis" id="mode-chip-axis"></span>
             </button>
+            <!-- 警告は手順の前に置く。手順ガイドは幅が足りないと横に流れるので、
+                 いちばん右に置くと、いちばん見せたい警告が画面外に隠れてしまう。 -->
+            <button class="warn-chip" id="scale-warn-chip" hidden
+                    title="スケールを設定すると cm で測れます">⚠ スケール未設定（px）</button>
             <span class="step">① 動画</span>
             <span class="step">② スケール</span>
             <span class="step">③ トラッキング</span>
             <span class="step">④ 提出</span>
-            <button class="warn-chip" id="scale-warn-chip" hidden
-                    title="スケールを設定すると cm で測れます">⚠ スケール未設定（px）</button>
         </nav>
 
         <!-- Main Workspace -->
@@ -148,10 +150,6 @@
                         </button>
                     </div>
                     <div class="calibration-info">
-                        <div class="cal-row">
-                            <span>原点:</span>
-                            <span>最初の打点（自動）</span>
-                        </div>
                         <div class="cal-row">
                             <span>スケール:</span>
                             <span id="info-scale">未設定</span>
@@ -536,6 +534,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（styles.css の ?v= も同様。キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-09-04a"></script>
+    <script src="app.js?v=2026-09-04b"></script>
 </body>
 </html>

@@ -276,7 +276,7 @@ body {
     display: inline-flex;
     align-items: center;
     flex: 0 0 auto;
-    margin-left: auto;
+    margin-right: 8px;
     padding: 4px 10px;
     border: 1px solid var(--cal);
     background: var(--cal-soft);
@@ -486,15 +486,15 @@ body {
 .trim-controls input[type="range"] {
     flex: 1;
     min-width: 120px;
-    height: 4px;
-    border-radius: 2px;
+    height: 8px;
+    border-radius: 4px;
     background: var(--line);
     -webkit-appearance: none;
     cursor: pointer;
 }
 .trim-controls input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 22px; height: 22px;
+    width: 26px; height: 26px;
     border-radius: 50%;
     background: var(--accent);
     border: 2px solid #FFFFFF;
@@ -515,17 +515,26 @@ body {
     color: var(--text);
 }
 
+/* 「いま何コマ使うか」の状態表示。押せるものと間違えないよう、
+   ボタンらしい塗りはやめて、左の線と文字色だけで示す。 */
 .trim-range {
     margin-top: 8px;
-    padding: 7px 10px;
-    background: var(--accent-soft);
-    border-radius: var(--radius-sm);
-    font-family: var(--font-mono);
+    padding: 6px 0 6px 10px;
+    border-left: 3px solid var(--line);
     font-variant-numeric: tabular-nums;
-    font-size: 0.82rem;
-    color: var(--accent-strong);
-    font-weight: 700;
+    font-size: 0.84rem;
+    color: var(--text-sub);
+    font-weight: 600;
 }
+.trim-range.is-trimmed { border-left-color: var(--accent); color: var(--accent-strong); }
+
+.trim-set-row { margin-top: 10px; }
+.trim-skip { margin-top: 10px; font-size: 0.78rem; color: var(--text-sub); line-height: 1.6; }
+.trim-skip b { color: var(--text); font-weight: 700; }
+
+/* 指で押す部分は Apple HIG / Material の最低寸法（44/48px）を下回らせない */
+.trim-controls .btn-icon { min-width: 44px; min-height: 44px; }
+.trim-set-row .btn { min-height: 44px; }
 
 /* ---- グラフ拡大ダイアログ（範囲の傾き測定） ------------------------ */
 .dialog.dialog-wide {
@@ -609,8 +618,8 @@ body {
 
 #frame-slider {
     flex: 1;
-    height: 4px;
-    border-radius: 2px;
+    height: 8px;
+    border-radius: 4px;
     background: var(--line);
     outline: none;
     -webkit-appearance: none;

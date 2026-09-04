@@ -317,16 +317,70 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             30000, '新サンプル読込');
         const smp = await evalExpr(cdp, S,
             `({ n: appState.frameTimes.length, fps: appState.videoFps, vw: appState.videoElement.videoWidth })`);
-        ok(smp.n >= 33 && smp.n <= 35, `新サンプル: 実時刻表 ${smp.n}コマ (期待35±微小)`);
+        ok(smp.n >= 78 && smp.n <= 80, `新サンプル: 実時刻表 ${smp.n}コマ (前後の静止区間こみで期待80)`);
         ok(Math.abs(smp.fps - 60) < 0.5, `新サンプル: fps≈60 (実測 ${smp.fps})`);
         ok(smp.vw === 540, `新サンプル: 540x960で実デコード`);
+
+        // 自由落下サンプルには前後に静止区間がある（トリミングの練習用）。
+        // その区間を切り落とせば、落下だけが解析され g が 9.8 になることを確かめる。
+        // ここが崩れると「トリミングを教える」ことと「真値が出る」ことが両立しない。
+        const trimmed = await evalExpr(cdp, S, `(async () => {
+            const s = appState, v = s.videoElement;
+            const cv = document.createElement('canvas'); cv.width = 135; cv.height = 240;
+            const cx = cv.getContext('2d', { willReadFrequently: true });
+            const seek = (k) => new Promise(r => { let d = false;
+                const h = () => { if (d) return; d = true; v.removeEventListener('seeked', h); r(); };
+                v.addEventListener('seeked', h); window.seekToFrame(k);
+                setTimeout(() => { if (!d) { d = true; v.removeEventListener('seeked', h); r(); } }, 2000); });
+            // 球の重心を全コマぶん測る
+            const ys = [];
+            for (let k = 0; k <= s.totalFrames; k++) {
+                await seek(k); await new Promise(r => setTimeout(r, 25));
+                cx.drawImage(v, 0, 0, cv.width, cv.height);
+                const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+                let sy = 0, sx = 0, c = 0;
+                for (let i = 0; i < d.length; i += 4) {
+                    if (d[i] > 190 && d[i+1] > 120 && d[i+2] < 110) {
+                        const p = i / 4; sx += p % cv.width; sy += Math.floor(p / cv.width); c++;
+                    }
+                }
+                ys.push(c ? { x: sx / c * (v.videoWidth / cv.width), y: sy / c * (v.videoHeight / cv.height) } : null);
+            }
+            // 動き出す／止まるコマを探す（静止区間の長さの確認用）
+            const moved = ys.map((p, i) => (i && p && ys[i-1]) ? Math.abs(p.y - ys[i-1].y) : 0);
+            const first = moved.findIndex(m => m > 1.5);
+            let last = moved.length - 1; while (last > 0 && moved[last] <= 1.5) last--;
+            // 落下区間だけを解析範囲にして打点する
+            s.rangeIn = first - 1; s.rangeOut = last;
+            s.trackingData = []; s.activeObjectId = 1;
+            s.calibration.scaleRatio = 100 / 500;   // 500px = 1m
+            for (let k = s.rangeIn; k <= s.rangeOut; k++) {
+                if (!ys[k]) continue;
+                s.trackingData.push({ id: 9000 + k, frame: k, time: window.frameTimeOf(k),
+                                      x: ys[k].x, y: ys[k].y, objectId: 1 });
+            }
+            const data = s.trackingData.slice().sort((a, b) => a.frame - b.frame);
+            const kin = window.computeKinematics(data);
+            const pts = kin.map(k => ({ t: k.t, v: k.vy })).filter(p => isFinite(p.v));
+            const mt = pts.reduce((a, p) => a + p.t, 0) / pts.length;
+            const mv = pts.reduce((a, p) => a + p.v, 0) / pts.length;
+            let stt = 0, stv = 0;
+            pts.forEach(p => { stt += (p.t - mt) ** 2; stv += (p.t - mt) * (p.v - mv); });
+            const g = Math.abs(stv / stt) / 100;
+            return { first, last, lead: first, tail: s.totalFrames - last, n: data.length, g };
+        })()`);
+        ok(trimmed.lead >= 15 && trimmed.tail >= 12,
+            `自由落下サンプルに前後の静止区間がある（前 ${trimmed.lead} / 後 ${trimmed.tail} コマ）`);
+        ok(Math.abs(trimmed.g - 9.8) / 9.8 < 0.05,
+            `静止区間を切ると g=${trimmed.g.toFixed(3)} m/s²（${trimmed.n}点・9.8の5%以内）`);
+        await evalExpr(cdp, S, `(appState.rangeIn=0, appState.rangeOut=appState.totalFrames, appState.trackingData=[], 1)`);
 
         // 複製除外がコマを取りこぼさないこと。
         // 投げ上げの頂点・自由落下の出だしは物体がほとんど動かないため、
         // 画素比較の感度が鈍いと「エンコード複製」と誤判定して実コマを捨ててしまう
         // （2026-08 に発覚。頂点の2コマが消えて時間が飛んでいた）。
         const SAMPLE_FRAMES = [
-            ['free_fall.mp4', 35], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
+            ['free_fall.mp4', 80], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
             ['oblique_throw.mp4', 43]
         ];
         for (const [name, expected] of SAMPLE_FRAMES) {

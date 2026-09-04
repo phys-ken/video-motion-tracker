@@ -91,8 +91,67 @@ def classroom_bg(w, h):
     return f
 
 
-def new_frame(w, h):
-    return classroom_bg(w, h).copy()
+CLOCK = (238, 240, 242)    # 掛け時計の文字盤
+HAND = (58, 52, 46)        # 時計の針
+CLOUD = (238, 232, 222)    # 窓の外の雲
+
+
+def draw_motion_props(f, i):
+    """毎コマ必ず絵が変わるように、教室の「動くもの」を描く。
+
+    これが無いと、静止している前後のコマがエンコーダの複製フレームと見分けが
+    つかず、アプリの複製除外（changedFraction < 0.08%）に落とされてしまう。
+    掛け時計の秒針と窓の外の雲を、しきい値に対して十分な余裕をもって動かす。
+    針も雲も球からは離れた位置に描くので、追跡の真値には影響しない。
+    """
+    h, w = f.shape[:2]
+    s = 1 << SHIFT
+
+    # 掛け時計（黒板の右上・壁の高いところ）。秒針は1秒で1周させる。
+    # 実物より速いが、静止コマを「同じ絵」にしないための仕掛けなので割り切る。
+    cx, cy = int(w * 0.80), int(h * 0.055)
+    r = max(18, int(w * 0.062))
+    cv2.circle(f, (cx * s, cy * s), (r + 3) * s, HAND, -1, cv2.LINE_AA, SHIFT)
+    cv2.circle(f, (cx * s, cy * s), r * s, CLOCK, -1, cv2.LINE_AA, SHIFT)
+    for k in range(12):                                   # 文字盤の目盛り
+        a = math.pi * 2 * k / 12
+        p1 = (cx + math.cos(a) * r * 0.78, cy + math.sin(a) * r * 0.78)
+        p2 = (cx + math.cos(a) * r * 0.92, cy + math.sin(a) * r * 0.92)
+        cv2.line(f, (int(p1[0] * s), int(p1[1] * s)), (int(p2[0] * s), int(p2[1] * s)),
+                 HAND, 2 * s // 2, cv2.LINE_AA, SHIFT)
+    for ang, ln, th in ((-math.pi / 3, 0.50, 5), (math.pi / 5, 0.72, 4)):   # 短針・長針（固定）
+        cv2.line(f, (cx * s, cy * s),
+                 (int((cx + math.cos(ang) * r * ln) * s), int((cy + math.sin(ang) * r * ln) * s)),
+                 HAND, th, cv2.LINE_AA, SHIFT)
+    a = -math.pi / 2 + math.pi * 2 * (i % FPS) / FPS      # 秒針: 1周 = 60コマ
+    cv2.line(f, (cx * s, cy * s),
+             (int((cx + math.cos(a) * r * 0.88) * s), int((cy + math.sin(a) * r * 0.88) * s)),
+             (60, 60, 200), 3, cv2.LINE_AA, SHIFT)
+    cv2.circle(f, (cx * s, cy * s), 3 * s, HAND, -1, cv2.LINE_AA, SHIFT)
+
+    # 窓の外を流れる雲。アプリの複製除外は 160x90 に縮小して判定するので、
+    # 縦方向は約1/11に潰れる。ゆっくりの雲では「絵が変わっていない」と見なされて
+    # 静止コマが落とされるため、常に雲が窓の中にいるよう3つ並べ、しっかり流す。
+    wx1, wy1 = int(w * 0.70), int(h * 0.11)
+    wx2, wy2 = int(w * 0.96), int(h * 0.40)
+    ww, wh = wx2 - wx1, wy2 - wy1
+    sub = f[wy1:wy2, wx1:wx2].copy()
+    span = ww + 220
+    for k, (fy, rr, spd) in enumerate(((0.28, 0.30, 6.5), (0.58, 0.24, 5.0), (0.80, 0.20, 7.5))):
+        cxx = -110 + ((i * spd + k * span / 3.0) % span)
+        cyy = wh * fy
+        rad = wh * rr
+        for dx, dy, m in ((-0.95, 0.16, 0.72), (0.0, 0.0, 1.0), (0.9, 0.2, 0.66)):
+            cv2.circle(sub, (int((cxx + dx * rad) * s), int((cyy + dy * rad) * s)),
+                       int(rad * m * s), CLOUD, -1, cv2.LINE_AA, SHIFT)
+    f[wy1:wy2, wx1:wx2] = sub
+
+
+def new_frame(w, h, i=None):
+    f = classroom_bg(w, h).copy()
+    if i is not None:
+        draw_motion_props(f, i)
+    return f
 
 
 def draw_scale_bar(f, x, y, px_per_m):
@@ -141,16 +200,30 @@ def encode(name, frames, w, h):
 G = 9.8  # m/s^2
 
 
+# 自由落下サンプルだけは、授業でトリミング操作も体験できるよう、
+# 運動の前後に「何も起きていない区間」を付けてある（真値は落下の35コマのまま）。
+FF_LEAD = 24    # 落とす前（手で持って静止）
+FF_TAIL = 21    # 落ちきった後（床で静止）
+
+
 def gen_free_fall():
-    """自由落下（縦・v0=0）: scale 500px=1m, y0から1.6m落下"""
+    """自由落下（縦・v0=0）: scale 500px=1m, y0から1.6m落下。
+    前に24コマ・後ろに21コマの静止区間を付ける（トリミングの練習用）。"""
     W, H, PPM = 540, 960, 500
     n = 35  # 0.567s → 落下 1.57m
+    Y0 = 80.0
+    y_end = Y0 + 0.5 * G * ((n - 1) / FPS) ** 2 * PPM
     frames = []
-    for i in range(n):
-        t = i / FPS
-        f = new_frame(W, H)
+    for k in range(FF_LEAD + n + FF_TAIL):
+        f = new_frame(W, H, k)                      # 時計と雲は全コマ動き続ける
         draw_scale_bar(f, 20, H - 30, PPM)
-        y = 80 + 0.5 * G * t * t * PPM
+        if k < FF_LEAD:                             # 手で持って静止
+            y = Y0
+        elif k < FF_LEAD + n:                       # 落下（ここが真値の区間）
+            t = (k - FF_LEAD) / FPS
+            y = Y0 + 0.5 * G * t * t * PPM
+        else:                                       # 落ちきって静止
+            y = y_end
         ball(f, W / 2, y, 14, AMBER)
         frames.append(f)
     encode("free_fall.mp4", frames, W, H)
