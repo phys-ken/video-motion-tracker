@@ -15,10 +15,14 @@
 
 黒板に投影するか、プリントに貼って配ってください。生徒は読み取るだけで始められます。
 
-| アプリ本体 | 手順書: 自由落下 | 手順書: 鉛直投げ上げ | 手順書: 水平投射 | 手順書: 斜方投射 |
-|:---:|:---:|:---:|:---:|:---:|
-| <img src="docs/qr/app.png" width="120" alt="アプリのQRコード"> | <img src="docs/qr/guide-free-fall.png" width="120" alt="自由落下の手順書のQRコード"> | <img src="docs/qr/guide-vertical-throw.png" width="120" alt="鉛直投げ上げの手順書のQRコード"> | <img src="docs/qr/guide-projectile.png" width="120" alt="水平投射の手順書のQRコード"> | <img src="docs/qr/guide-oblique.png" width="120" alt="斜方投射の手順書のQRコード"> |
-| [開く](https://phys-ken.github.io/video-motion-tracker/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/vertical_throw.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/projectile.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/oblique.html) |
+| アプリ本体 | **使い方（操作）** | 手順書: 自由落下 | 手順書: 鉛直投げ上げ | 手順書: 水平投射 | 手順書: 斜方投射 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/qr/app.png" width="110" alt="アプリのQRコード"> | <img src="docs/qr/manual.png" width="110" alt="使い方のQRコード"> | <img src="docs/qr/guide-free-fall.png" width="110" alt="自由落下の手順書のQRコード"> | <img src="docs/qr/guide-vertical-throw.png" width="110" alt="鉛直投げ上げの手順書のQRコード"> | <img src="docs/qr/guide-projectile.png" width="110" alt="水平投射の手順書のQRコード"> | <img src="docs/qr/guide-oblique.png" width="110" alt="斜方投射の手順書のQRコード"> |
+| [開く](https://phys-ken.github.io/video-motion-tracker/) | [開く](https://phys-ken.github.io/video-motion-tracker/manual/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/vertical_throw.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/projectile.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/oblique.html) |
+
+**使い方**は画面写真つきの1ページで、アプリの操作だけを7ステップで説明します。
+ブラウザの印刷から**そのまま PDF（A4・4ページ）**にできます。
+**手順書**は実験そのもの（何を用意し、どう撮るか）の説明です。
 
 誤り訂正レベル H（30%）で作ってあるので、印刷が多少かすれても読み取れます。
 URL を変えたときは `tools/gen_assets.py` で再生成してください。
@@ -65,6 +69,7 @@ URL を変えたときは `tools/gen_assets.py` で再生成してください�
 | `tools/` | サンプル動画・アイコン・QRのジェネレータ |
 | `serve.py` | ローカル開発サーバ（キャッシュ無効・LAN公開） |
 | `test_logic.js` / `tests/` / `test.html` | テスト一式 |
+| `manual/` | 生徒向けの使い方（画面写真つき・印刷/PDF対応）。写真は `tools/gen_manual_shots.js` で再生成 |
 | `teacher/` | 提出画像の照合ページ（教員用・アプリからのリンクなし） |
 | `docs/CLASSROOM.md` | 授業当日の手引き（教員用） |
 | `vendor/` | 同梱ライブラリ（[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)） |
@@ -81,6 +86,8 @@ npm run test:views    # PC/タブレット横/タブレット縦/スマホの4�
 npm run test:ipad     # iPadのUA・タッチ・回転で通しで検証（縦動画・ピンチ・保存）
 npm run test:teacher  # 教員用の照合ページが重複を見つけられるかを検証
 npm run test:trim     # 「使う範囲を決める」画面（表示の一貫性・帯・44px・コマ落ち）
+npm run test:manual   # 使い方ページ（画像の欠け・alt・横スクロール・印刷）
+npm run shots         # 使い方ページの画面写真を撮り直す（UIを変えたら実行）
 npm run test:all      # 上記すべて
 ```
 

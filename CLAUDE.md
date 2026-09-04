@@ -16,6 +16,8 @@
 - 速度・加速度の平滑化（`kinematicsWindow`, `ACCEL_EDGE_DROP`）とフレーム時刻表
   （`dedupTimesByPixel`）は精度テストで守られている。定数を変えたら `npm run test:precision`。
 - 本番前の大きなリファクタ（app.js の分割など）はしない。
+- UI の見た目を変えたら `npm run shots` で `manual/img/` を撮り直す。
+  使い方ページの画面写真は手で撮らない（`tools/gen_manual_shots.js` が唯一の出どころ）。
 
 ## テスト
 ```

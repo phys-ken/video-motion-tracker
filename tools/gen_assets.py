@@ -28,6 +28,7 @@ PAGES = [
     ("guide-vertical-throw", BASE + "guide/vertical_throw.html", "手順書: 鉛直投げ上げ"),
     ("guide-projectile", BASE + "guide/projectile.html", "手順書: 水平投射"),
     ("guide-oblique", BASE + "guide/oblique.html", "手順書: 斜方投射"),
+    ("manual", BASE + "manual/", "使い方（アプリの操作）"),
 ]
 
 # アプリの配色（styles.css と揃える）
