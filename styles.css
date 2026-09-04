@@ -531,6 +531,42 @@ body {
 .trim-range.is-trimmed { border-left-color: var(--accent); color: var(--accent-strong); }
 
 .trim-set-row { margin-top: 10px; }
+
+/* 押したときに何が起きるかを、ボタンの見た目でも示す。
+   ・適用中 … このコマが今の先頭／終わり。もう一度押すと解除
+   ・押せない … いま押しても範囲が逆になるので変えられない
+   押せない側も要素としては押せるままにしてある。完全に無効にすると、
+   押しても何も起きず、なぜ駄目なのかを返せないため。 */
+.btn.is-applied,
+.btn-icon.is-applied {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #FFFFFF;
+}
+.btn.is-applied .material-icons-round,
+.btn-icon.is-applied .material-icons-round { color: #FFFFFF; }
+.btn.is-blocked,
+.btn-icon.is-blocked {
+    background: var(--surface-2);
+    border-color: var(--line-soft);
+    color: #9AA5B1;
+    box-shadow: none;
+}
+.btn.is-blocked .material-icons-round,
+.btn-icon.is-blocked .material-icons-round { color: #9AA5B1; }
+
+/* ボタンの下に出す説明。押せない理由や、もう一度押すとどうなるかを書く */
+.trim-hint {
+    margin-top: 7px;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-sub);
+}
+.trim-hint[hidden] { display: none; }
+.trim-hint.is-warn {
+    color: var(--cal);
+    font-weight: 600;
+}
 .trim-skip { margin-top: 10px; font-size: 0.78rem; color: var(--text-sub); line-height: 1.6; }
 .trim-skip b { color: var(--text); font-weight: 700; }
 

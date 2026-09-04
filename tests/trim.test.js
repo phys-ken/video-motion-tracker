@@ -12,6 +12,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✅ ' + m); } else { fail++; console.error('  ❌ ' + m); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const appStateTotal = (o) => o.rangeOut;   // 「変わっていない」ことの確認用
 function startServer() { return new Promise(res => { const s = http.createServer((q, r) => {
     let p = decodeURIComponent(q.url.split('?')[0]); if (p === '/') p = '/index.html';
     const fp = path.join(ROOT, p);
@@ -160,6 +161,72 @@ try {
     ok(cut.band, 'スライダに「使う範囲」の帯が出る');
     ok(cut.marked && !cut.resetHidden, '切った状態が色で分かり、「全部に戻す」が出る');
     await shot('trim_2_cut.png');
+
+    // --- 押し間違え・順序の検証 ---------------------------------------
+    // 終わりより後で「ここから使う」を押しても、黙って別のコマに丸められない
+    const guard = await ev(cdp, S, `
+        appState.rangeIn = 0; appState.rangeOut = appState.totalFrames;
+        window.updateRangeUI();
+        window.seekToFrame(58); await new Promise(r=>setTimeout(r,450));
+        document.getElementById('trim-set-out').click(); await new Promise(r=>setTimeout(r,200));
+        window.seekToFrame(70); await new Promise(r=>setTimeout(r,450));
+        const btn = document.getElementById('trim-set-in');
+        const blocked = btn.classList.contains('is-blocked');
+        const aria = btn.getAttribute('aria-disabled');
+        btn.click(); await new Promise(r=>setTimeout(r,250));
+        return {blocked, aria, rangeIn: appState.rangeIn, rangeOut: appState.rangeOut,
+                hint: document.getElementById('trim-hint').textContent};`);
+    ok(guard.blocked && guard.aria === 'true', '終わりより後では「ここから使う」がグレーになる');
+    ok(guard.rangeIn === 0 && guard.rangeOut === 58,
+        `押しても黙って丸めない（先頭 ${guard.rangeIn} / 終わり ${guard.rangeOut} のまま）`);
+    ok(/終わり/.test(guard.hint) && /ここまで使う/.test(guard.hint),
+        `理由と直し方を出す (${guard.hint.slice(0, 34)}…)`);
+
+    // 先頭より前で「ここまで使う」を押した場合も同じ
+    const guard2 = await ev(cdp, S, `
+        appState.rangeIn = 0; appState.rangeOut = appState.totalFrames;
+        window.updateRangeUI();
+        window.seekToFrame(30); await new Promise(r=>setTimeout(r,450));
+        document.getElementById('trim-set-in').click(); await new Promise(r=>setTimeout(r,200));
+        window.seekToFrame(12); await new Promise(r=>setTimeout(r,450));
+        const btn = document.getElementById('trim-set-out');
+        const blocked = btn.classList.contains('is-blocked');
+        btn.click(); await new Promise(r=>setTimeout(r,250));
+        return {blocked, rangeIn: appState.rangeIn, rangeOut: appState.rangeOut,
+                hint: document.getElementById('trim-hint').textContent};`);
+    ok(guard2.blocked && guard2.rangeIn === 30 && guard2.rangeOut === appStateTotal(guard2),
+        '先頭より前では「ここまで使う」がグレーになり、範囲も変わらない');
+    ok(/先頭/.test(guard2.hint) && /ここから使う/.test(guard2.hint),
+        `逆向きでも理由と直し方を出す (${guard2.hint.slice(0, 34)}…)`);
+
+    // いま先頭／終わりに立っているときは「適用中」に見え、もう一度で解除できる
+    const applied = await ev(cdp, S, `
+        appState.rangeIn = 0; appState.rangeOut = appState.totalFrames;
+        window.updateRangeUI();
+        window.seekToFrame(24); await new Promise(r=>setTimeout(r,450));
+        document.getElementById('trim-set-in').click(); await new Promise(r=>setTimeout(r,250));
+        const btn = document.getElementById('trim-set-in');
+        const isApplied = btn.classList.contains('is-applied');
+        const hint = document.getElementById('trim-hint').textContent;
+        btn.click(); await new Promise(r=>setTimeout(r,250));
+        return {isApplied, hint, after: appState.rangeIn};`);
+    ok(applied.isApplied, '先頭に立っているとボタンが「適用中」の見た目になる');
+    ok(/もう一度押すと/.test(applied.hint), `解除できることを書いてある (${applied.hint.slice(0, 30)}…)`);
+    ok(applied.after === 0, 'もう一度押すと先頭のカットが解除される');
+
+    // 1コマだけの範囲は作れない
+    const oneFrame = await ev(cdp, S, `
+        appState.rangeIn = 30; appState.rangeOut = appState.totalFrames;
+        window.updateRangeUI();
+        window.seekToFrame(30); await new Promise(r=>setTimeout(r,450));
+        const btn = document.getElementById('trim-set-out');
+        const blocked = btn.classList.contains('is-blocked');
+        btn.click(); await new Promise(r=>setTimeout(r,250));
+        return {blocked, rangeOut: appState.rangeOut, total: appState.totalFrames};`);
+    ok(oneFrame.blocked && oneFrame.rangeOut === oneFrame.total,
+        '先頭と同じコマは終わりにできない（1コマだけの範囲を作らせない）');
+
+    await ev(cdp, S, `appState.rangeIn=24; appState.rangeOut=58; window.updateRangeUI(); return 1;`);
 
     // 範囲を決めたあとでも、その外へコマ送りできる（切りすぎても戻せる）
     const outside = await ev(cdp, S, `

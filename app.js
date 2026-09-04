@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-04d';
+const APP_VERSION = '2026-09-05a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -1557,8 +1557,8 @@ function stepFrame(delta, isAutoAdvance) {
         const atCustomEdge = delta > 0 ? appState.rangeOut < appState.totalFrames
                                        : appState.rangeIn > 0;
         showStepBadge(delta > 0
-            ? (atCustomEdge ? 'アウト点です' : '最後のコマです')
-            : (atCustomEdge ? 'イン点です' : '最初のコマです'));
+            ? (atCustomEdge ? '使う範囲の終わりです' : '最後のコマです')
+            : (atCustomEdge ? '使う範囲の先頭です' : '最初のコマです'));
         return;
     }
     if (flipTarget !== null) {
@@ -1628,8 +1628,12 @@ function showStepBadge(text, sticky) {
 // 再生バーの表示に加え、映像右上の常設カウンタ・トリミングダイアログ・
 // 打点マップの現在位置にも同期する。
 function frameNo(frame) { return frame + 1; }   // 内部(0始まり) → 表示(1始まり)
+let lastLabelledFrame = null;
 function updateFrameLabel(frame) {
     updateHitMapCurrent();
+    if (lastLabelledFrame !== null && lastLabelledFrame !== frame) clearTrimHintHold();
+    lastLabelledFrame = frame;
+    updateRangeButtons();
     const text = `${frameNo(frame)} / ${frameNo(appState.totalFrames)}`;
     const lbl = document.getElementById('lbl-frame');
     if (lbl) lbl.textContent = text;
@@ -1690,6 +1694,7 @@ function updateRangeUI() {
     }
     const reset = document.getElementById('trim-reset');
     if (reset) reset.hidden = full;
+    updateRangeButtons();
 }
 
 // 範囲確定時にその範囲だけ複製コマを除外（読込時に持ち越した分。1動画につき1回）
@@ -1731,23 +1736,120 @@ async function maybeDedupRange() {
     updateTimeDisplay();
 }
 
-function toggleRangeIn() {
+// --- 使う範囲の始まり／終わり ------------------------------------------
+// 押したときに何が起きるかを、この1か所で決める。ボタンの見た目（押せる／
+// 適用中／押せない）も、実際の処理も同じ判定を使うので、見た目と結果がずれない。
+//
+// 以前は Math.min / Math.max で黙って丸めていた。終わりがコマ59のときに
+// コマ70で「ここから使う」を押すと、始まりが59になって返ってくる。押した所と
+// 違う結果が黙って返るのが分かりにくさの正体だったので、丸めるのをやめ、
+// できない操作は「できない」と見せて理由を書くようにした。
+function rangeActionState(which) {
+    const cur = appState.currentFrame;
+    const inF = appState.rangeIn, outF = appState.rangeOut, last = appState.totalFrames;
+    if (which === 'in') {
+        if (inF > 0 && cur === inF) {
+            return { kind: 'applied', short: 'ここが先頭です',
+                     hint: 'このコマが使う範囲の先頭です。もう一度押すと、先頭のカットをやめます。' };
+        }
+        if (cur >= outF) {
+            return { kind: 'blocked', short: '終わりより後です',
+                     hint: outF < last
+                        ? `ここはコマ ${frameNo(outF)}（終わり）より後です。終わりを変えるなら［ここまで使う］を押してください。`
+                        : 'ここは最後のコマです。先頭にはできません。' };
+        }
+        if (cur === 0) {
+            return { kind: 'noop', short: '最初のコマです',
+                     hint: 'いちばん最初のコマなので、先頭に切るところはありません。' };
+        }
+        return { kind: 'ready', hint: '' };
+    }
+    if (outF < last && cur === outF) {
+        return { kind: 'applied', short: 'ここが終わりです',
+                 hint: 'このコマが使う範囲の終わりです。もう一度押すと、終わりのカットをやめます。' };
+    }
+    if (cur <= inF) {
+        return { kind: 'blocked', short: '先頭より前です',
+                 hint: inF > 0
+                    ? `ここはコマ ${frameNo(inF)}（先頭）より前です。先頭を変えるなら［ここから使う］を押してください。`
+                    : 'ここは最初のコマです。終わりにはできません。' };
+    }
+    if (cur === last) {
+        return { kind: 'noop', short: '最後のコマです',
+                 hint: 'いちばん最後のコマなので、終わりに切るところはありません。' };
+    }
+    return { kind: 'ready', hint: '' };
+}
+
+function applyRangeAction(which) {
     if (!appState.videoElement.src) return;
+    const st = rangeActionState(which);
+    if (st.kind === 'blocked' || st.kind === 'noop') {
+        // 押しても何も起きない場合でも、理由は必ず返す（無反応にしない）
+        showStepBadge(st.short);
+        showTrimHint(st.hint, true);
+        return;
+    }
     pauseVideo();
-    // 既にイン点と同じコマでもう一度押すと解除（先頭へ戻す）
-    appState.rangeIn = (appState.rangeIn === appState.currentFrame) ? 0
-        : Math.min(appState.currentFrame, appState.rangeOut);
+    clearTrimHintHold();   // 直前の「押せない理由」は、操作が通った時点で用済み
+    if (which === 'in') {
+        appState.rangeIn = (st.kind === 'applied') ? 0 : appState.currentFrame;
+    } else {
+        appState.rangeOut = (st.kind === 'applied') ? appState.totalFrames : appState.currentFrame;
+    }
     updateRangeUI(); updateDataTable(); updateGraph();
     maybeDedupRange();
 }
 
-function toggleRangeOut() {
-    if (!appState.videoElement.src) return;
-    pauseVideo();
-    appState.rangeOut = (appState.rangeOut === appState.currentFrame) ? appState.totalFrames
-        : Math.max(appState.currentFrame, appState.rangeIn);
-    updateRangeUI(); updateDataTable(); updateGraph();
-    maybeDedupRange();
+function toggleRangeIn() { applyRangeAction('in'); }
+function toggleRangeOut() { applyRangeAction('out'); }
+
+// トリミングダイアログの説明行。
+// 「押せない理由」はしばらく残す（読む前に消えると意味がない）が、
+// 操作が通ったときと、コマを動かしたときは、その時点で用済みなので解除する。
+// 残したままだと、いまの状態と食い違う古い理由が画面に残ってしまう。
+let trimHintTimer = null;
+function clearTrimHintHold() {
+    if (trimHintTimer) { clearTimeout(trimHintTimer); trimHintTimer = null; }
+    const el = document.getElementById('trim-hint');
+    if (el) el.classList.remove('is-warn');
+}
+function showTrimHint(text, emphasise) {
+    const el = document.getElementById('trim-hint');
+    if (!el) return;
+    if (trimHintTimer) { clearTimeout(trimHintTimer); trimHintTimer = null; }
+    el.textContent = text || '';
+    el.hidden = !text;
+    el.classList.toggle('is-warn', !!emphasise);
+    if (emphasise) trimHintTimer = setTimeout(() => el.classList.remove('is-warn'), 4000);
+}
+
+// ボタンの見た目を、いまのコマで何ができるかに合わせる。
+// 押せないときはグレーにするが、要素としては押せるままにしておく。
+// 完全に無効にすると、押しても何も起きず理由も出せないため。
+function updateRangeButtons() {
+    const states = { in: rangeActionState('in'), out: rangeActionState('out') };
+    const ids = { in: ['btn-range-in', 'trim-set-in'], out: ['btn-range-out', 'trim-set-out'] };
+    const labels = { in: 'ここから使う', out: 'ここまで使う' };
+    for (const which of ['in', 'out']) {
+        const st = states[which];
+        for (const id of ids[which]) {
+            const b = document.getElementById(id);
+            if (!b) continue;
+            b.classList.toggle('is-applied', st.kind === 'applied');
+            b.classList.toggle('is-blocked', st.kind === 'blocked' || st.kind === 'noop');
+            b.setAttribute('aria-disabled', (st.kind === 'blocked' || st.kind === 'noop') ? 'true' : 'false');
+            // アイコンだけのボタンでは title が名前そのものなので、必ず名前から書き、
+            // 理由はそのうしろに足す（理由で名前を上書きしない）
+            const base = `${labels[which]}（このコマを使う範囲の${which === 'in' ? '先頭' : '終わり'}にします）`;
+            b.title = st.hint ? `${labels[which]}｜${st.hint}` : base;
+        }
+    }
+    // ダイアログの説明行は、押せない側の理由を優先して出す
+    const hint = [states.in, states.out].find(s => s.kind === 'applied')
+        || [states.in, states.out].find(s => s.kind === 'blocked')
+        || [states.in, states.out].find(s => s.kind === 'noop');
+    if (!trimHintTimer) showTrimHint(hint ? hint.hint : '', false);
 }
 
 function setupRangeControls() {
@@ -1831,6 +1933,7 @@ function showTrimDialog(onClose) {
             <button class="btn btn-small btn-quiet" id="trim-reset" hidden>全部に戻す</button>
         </div>
         <div class="trim-range" id="trim-range-lbl">${trimRangeText()}</div>
+        <p class="trim-hint" id="trim-hint" hidden></p>
         <p class="trim-skip">全部使う（＝そのまま<b>はじめる</b>）でもかまいません。
             あとから画面下の<b>同じボタン</b>でやり直せます。</p>
     `;
