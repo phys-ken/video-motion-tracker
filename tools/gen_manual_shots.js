@@ -93,22 +93,26 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
                 if (dir === 'right') { x1 = rect.x + rect.w + PAD + L; y1 = cy; x2 = rect.x + rect.w + PAD + 10; y2 = cy; }
                 if (dir === 'top')   { x1 = cx; y1 = rect.y - PAD - L; x2 = cx; y2 = rect.y - PAD - 10; }
                 if (dir === 'bottom'){ x1 = cx; y1 = rect.y + rect.h + PAD + L; x2 = cx; y2 = rect.y + rect.h + PAD + 10; }
-                const minX = Math.min(x1, x2) - 22, minY = Math.min(y1, y2) - 22;
-                const w = Math.abs(x2 - x1) + 44, h = Math.abs(y2 - y1) + 44;
+                // 矢印は「軸と頭を1つの図形」として描く。線と marker を別々に描くと、
+                // marker の大きさが線の太さに比例して拡大され、白と赤で先端がずれる。
+                const pad = 26;
+                const minX = Math.min(x1, x2) - pad, minY = Math.min(y1, y2) - pad;
+                const w = Math.abs(x2 - x1) + pad * 2, h = Math.abs(y2 - y1) + pad * 2;
+                const len = Math.hypot(x2 - x1, y2 - y1);
+                const deg = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+                const t = 5, hl = 21, hw = 12.5;      // 軸の半太さ / 頭の長さ / 頭の半幅
+                const d = 'M0,' + (-t) + ' L' + (len - hl) + ',' + (-t) +
+                          ' L' + (len - hl) + ',' + (-hw) + ' L' + len + ',0' +
+                          ' L' + (len - hl) + ',' + hw + ' L' + (len - hl) + ',' + t + ' L0,' + t + ' Z';
                 const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 svg.setAttribute('data-manual-mark', '1');
                 svg.setAttribute('width', w); svg.setAttribute('height', h);
                 svg.style.cssText = 'position:absolute;pointer-events:none;z-index:99999;' +
                     'left:' + minX + 'px;top:' + minY + 'px;overflow:visible;';
-                svg.innerHTML =
-                    '<defs><marker id="mk-h" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4.2" markerHeight="4.2" orient="auto">' +
-                    '<path d="M0 0 L10 5 L0 10 z" fill="#FFFFFF"/></marker>' +
-                    '<marker id="mk-a" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto">' +
-                    '<path d="M0 0 L10 5 L0 10 z" fill="' + COL + '"/></marker></defs>' +
-                    '<line x1="' + (x1 - minX) + '" y1="' + (y1 - minY) + '" x2="' + (x2 - minX) + '" y2="' + (y2 - minY) +
-                    '" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" marker-end="url(#mk-h)"/>' +
-                    '<line x1="' + (x1 - minX) + '" y1="' + (y1 - minY) + '" x2="' + (x2 - minX) + '" y2="' + (y2 - minY) +
-                    '" stroke="' + COL + '" stroke-width="6" stroke-linecap="round" marker-end="url(#mk-a)"/>';
+                const g = '<g transform="translate(' + (x1 - minX) + ',' + (y1 - minY) + ') rotate(' + deg + ')">';
+                svg.innerHTML = g +
+                    '<path d="' + d + '" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="7" stroke-linejoin="round"/>' +
+                    '<path d="' + d + '" fill="' + COL + '"/></g>';
                 document.body.appendChild(svg);
             };`;
         // 複数を囲むときは矢印を出さない（隣の枠や文字に矢が重なるため）
