@@ -507,7 +507,9 @@ body {
 }
 
 .trim-frame {
-    margin-left: auto;
+    display: block;
+    text-align: center;
+    margin: 6px 0 0;
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-size: 0.85rem;
@@ -532,9 +534,42 @@ body {
 .trim-skip { margin-top: 10px; font-size: 0.78rem; color: var(--text-sub); line-height: 1.6; }
 .trim-skip b { color: var(--text); font-weight: 700; }
 
+/* スライダは横いっぱいに使う。ここが狭いと「だいたいの位置」すら決められない */
+.trim-slider {
+    display: block;
+    width: 100%;
+    margin: 12px 0 0;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--line);
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+.trim-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #FFFFFF;
+    box-shadow: 0 1px 3px rgba(31, 41, 51, 0.35); cursor: pointer;
+}
+.trim-slider::-moz-range-thumb {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #FFFFFF; cursor: pointer;
+}
+/* コマ送りは追跡画面と同じ4つ。中央で左右に分け、対称に見せる */
+.trim-jog {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+.trim-jog .btn-jog { min-width: 56px; min-height: 46px; }
+.trim-jog .btn-jog:nth-child(2) { margin-right: 14px; }
+
 /* 指で押す部分は Apple HIG / Material の最低寸法（44/48px）を下回らせない */
 .trim-controls .btn-icon { min-width: 44px; min-height: 44px; }
 .trim-set-row .btn { min-height: 44px; }
+.trim-set-row { justify-content: center; }
 
 /* ---- グラフ拡大ダイアログ（範囲の傾き測定） ------------------------ */
 .dialog.dialog-wide {

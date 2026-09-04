@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-04b';
+const APP_VERSION = '2026-09-04c';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -1515,8 +1515,12 @@ async function seekWithPush(target, durMs) {
 }
 
 // ジョグボタン: タップ＝1回、長押し＝連続コマ送り（450ms後から150ms間隔）
-function attachJogButton(btn, delta) {
+// step を渡すと、そのコマ送り関数を使う（既定は解析範囲に丸める stepFrame）。
+// トリミング画面では範囲の外へも動けないと「切りすぎたら戻せない」ので、
+// 範囲に丸めない別のコマ送りを渡す。
+function attachJogButton(btn, delta, step) {
     if (!btn) return;
+    const jog = step || ((d) => stepFrame(d));
     let holdTimer = null, repeatTimer = null, held = false;
     const stop = () => {
         if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
@@ -1527,15 +1531,15 @@ function attachJogButton(btn, delta) {
         stop();
         holdTimer = setTimeout(() => {
             held = true;
-            stepFrame(delta);
-            repeatTimer = setInterval(() => stepFrame(delta), 150);
+            jog(delta);
+            repeatTimer = setInterval(() => jog(delta), 150);
         }, 450);
     });
     btn.addEventListener('pointerup', stop);
     btn.addEventListener('pointercancel', stop);
     btn.addEventListener('pointerleave', stop);
     // 長押しで連続送りした場合は、指を離した時の click で余計に1コマ進めない
-    btn.addEventListener('click', () => { if (!held) stepFrame(delta); held = false; });
+    btn.addEventListener('click', () => { if (!held) jog(delta); held = false; });
     btn.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
@@ -1804,11 +1808,22 @@ function showTrimDialog(onClose) {
             必ず絞ってください（絞らないと打点マップなど一部の表示が制限されます）。</p>` : ''}
         <p class="trim-guide">運動していない<b>前後のコマを切って</b>おくと、あとの点打ちがラクです。</p>
         <canvas id="trim-preview" width="640" height="300"></canvas>
-        <div class="trim-controls">
-            <button class="btn-icon" id="trim-prev" title="1コマ戻る"><span class="material-icons-round">chevron_left</span></button>
-            <input type="range" id="trim-slider" min="0" max="${appState.totalFrames}" value="${appState.currentFrame}">
-            <button class="btn-icon" id="trim-next" title="1コマ進む"><span class="material-icons-round">chevron_right</span></button>
-            <span class="trim-frame" id="trim-frame-lbl">コマ ${frameNo(appState.currentFrame)} / ${frameNo(appState.totalFrames)}</span>
+        <!-- スライダは横いっぱい。1コマ分の幅は 80コマで約2px、300コマなら 0.6px しかなく、
+             指では狙えない。位置決めは「スライダでだいたい → コマ送りできっちり」に分ける。 -->
+        <input type="range" id="trim-slider" class="trim-slider"
+               min="0" max="${appState.totalFrames}" value="${appState.currentFrame}">
+        <div class="trim-frame" id="trim-frame-lbl">コマ ${frameNo(appState.currentFrame)} / ${frameNo(appState.totalFrames)}</div>
+        <!-- コマ送りは追跡画面とまったく同じ4つ。直後の作業で何十回も押すボタンなので、
+             ここだけ別の操作にすると覚えることが2つになる。 -->
+        <div class="trim-jog">
+            <button class="btn-icon btn-jog" id="trim-prev-10" title="10コマ戻る">
+                <span class="material-icons-round">fast_rewind</span><span class="jog-label">‹10</span></button>
+            <button class="btn-icon btn-jog" id="trim-prev-1" title="1コマ戻る">
+                <span class="material-icons-round">chevron_left</span><span class="jog-label">‹1</span></button>
+            <button class="btn-icon btn-jog" id="trim-next-1" title="1コマ進む">
+                <span class="material-icons-round">chevron_right</span><span class="jog-label">1›</span></button>
+            <button class="btn-icon btn-jog" id="trim-next-10" title="10コマ進む">
+                <span class="material-icons-round">forward_10</span><span class="jog-label">10›</span></button>
         </div>
         <div class="trim-controls trim-set-row">
             <button class="btn btn-secondary btn-small" id="trim-set-in"><span class="material-icons-round">first_page</span>ここから</button>
@@ -1834,8 +1849,13 @@ function showTrimDialog(onClose) {
     document.getElementById('trim-slider').addEventListener('input', (e) => {
         seekToFrame(parseInt(e.target.value));
     });
-    document.getElementById('trim-prev').addEventListener('click', () => seekToFrame(appState.currentFrame - 1));
-    document.getElementById('trim-next').addEventListener('click', () => seekToFrame(appState.currentFrame + 1));
+    // 追跡画面と同じ長押し連続送りにする。ただし解析範囲では丸めない
+    // （範囲を決めたあとに、その外へ戻れないと「切りすぎたらおしまい」になる）。
+    const trimJog = (d) => seekToFrame(appState.currentFrame + d);
+    attachJogButton(document.getElementById('trim-prev-10'), -10, trimJog);
+    attachJogButton(document.getElementById('trim-prev-1'), -1, trimJog);
+    attachJogButton(document.getElementById('trim-next-1'), 1, trimJog);
+    attachJogButton(document.getElementById('trim-next-10'), 10, trimJog);
     document.getElementById('trim-set-in').addEventListener('click', toggleRangeIn);
     document.getElementById('trim-set-out').addEventListener('click', toggleRangeOut);
     document.getElementById('trim-reset').addEventListener('click', () => {

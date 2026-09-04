@@ -98,10 +98,31 @@ try {
     // 指で押す部分の大きさ（Apple HIG 44px / Material 48px を下回らない）
     const hit = await ev(cdp, S, `
         const r=(id)=>{const b=document.getElementById(id).getBoundingClientRect();return [Math.round(b.width),Math.round(b.height)];};
-        return {prev:r('trim-prev'),next:r('trim-next'),setIn:r('trim-set-in'),setOut:r('trim-set-out')};`);
+        const sl=document.getElementById('trim-slider').getBoundingClientRect();
+        const dlg=document.querySelector('.dialog').getBoundingClientRect();
+        return {p10:r('trim-prev-10'),p1:r('trim-prev-1'),n1:r('trim-next-1'),n10:r('trim-next-10'),
+                setIn:r('trim-set-in'),setOut:r('trim-set-out'),
+                sliderW:Math.round(sl.width), dlgW:Math.round(dlg.width),
+                total:appState.totalFrames};`);
     const big = a => a[0] >= 44 && a[1] >= 44;
-    ok(big(hit.prev) && big(hit.next), `コマ送りボタンが44px以上 (${hit.prev.join('x')})`);
+    ok(big(hit.p10) && big(hit.p1) && big(hit.n1) && big(hit.n10),
+        `コマ送りが4つとも44px以上 (${hit.p10.join('x')})`);
     ok(big(hit.setIn) && big(hit.setOut), `ここから／ここまでが44px以上 (${hit.setIn.join('x')})`);
+    // スライダは横いっぱい。1コマ2pxでは指で狙えないので、粗い位置決めだけを担わせる
+    ok(hit.sliderW > hit.dlgW * 0.8, `スライダが横いっぱいにある (${hit.sliderW}px / ダイアログ ${hit.dlgW}px)`);
+
+    // コマ送りは1コマ・10コマとも効き、範囲の外にも動ける
+    const jog = await ev(cdp, S, `
+        window.seekToFrame(40); await new Promise(r=>setTimeout(r,400));
+        const hit=(id)=>{document.getElementById(id).click();};
+        hit('trim-next-1'); await new Promise(r=>setTimeout(r,350)); const a=appState.currentFrame;
+        hit('trim-next-10'); await new Promise(r=>setTimeout(r,450)); const b=appState.currentFrame;
+        hit('trim-prev-10'); await new Promise(r=>setTimeout(r,450)); const c=appState.currentFrame;
+        hit('trim-prev-1'); await new Promise(r=>setTimeout(r,350)); const d=appState.currentFrame;
+        return {a,b,c,d,lbl:document.getElementById('trim-frame-lbl').textContent.trim()};`);
+    ok(jog.a === 41 && jog.b === 51 && jog.c === 41 && jog.d === 40,
+        `1コマ・10コマのコマ送りが効く (40→${jog.a}→${jog.b}→${jog.c}→${jog.d})`);
+    ok(jog.lbl === 'コマ 41 / ' + (hit.total + 1), `コマ表示が追随する (${jog.lbl})`);
 
     // 前の静止区間を切る → 帯・文言・「全部に戻す」が連動する
     const cut = await ev(cdp, S, `
@@ -120,6 +141,14 @@ try {
     ok(cut.band, 'スライダに「使う範囲」の帯が出る');
     ok(cut.marked && !cut.resetHidden, '切った状態が色で分かり、「全部に戻す」が出る');
     await shot('trim_2_cut.png');
+
+    // 範囲を決めたあとでも、その外へコマ送りできる（切りすぎても戻せる）
+    const outside = await ev(cdp, S, `
+        window.seekToFrame(30); await new Promise(r=>setTimeout(r,400));
+        document.getElementById('trim-prev-10').click(); await new Promise(r=>setTimeout(r,500));
+        return {frame:appState.currentFrame, rangeIn:appState.rangeIn};`);
+    ok(outside.frame === 20 && outside.rangeIn === 24,
+        `切った範囲の外にもコマ送りできる (コマ${outside.frame} / 範囲の開始は${outside.rangeIn}のまま)`);
 
     // 全部に戻す
     const reset = await ev(cdp, S, `
