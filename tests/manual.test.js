@@ -62,6 +62,14 @@ try{
  console.log('\n--- 印刷 / PDF ---');
  ok(buf.length>50000, `PDFに書き出せる（${(buf.length/1024).toFixed(0)}KB）`);
  ok(pages>=2 && pages<=6, `A4で ${pages} ページに収まる`);
+ // 配布用PDFがリポジトリに置いてあり、いまのページと大きくずれていないこと
+ const shipped=path.join(ROOT,'manual','manual.pdf');
+ ok(fs.existsSync(shipped), '配布用PDF（manual/manual.pdf）が置いてある');
+ if(fs.existsSync(shipped)){
+   const sb=fs.readFileSync(shipped);
+   const sp=(sb.toString('latin1').match(/\/Type\s*\/Page[^s]/g)||[]).length;
+   ok(sp===pages, `配布用PDFのページ数が今のページと一致（${sp}ページ）`);
+ }
 }catch(e){fail++;console.error('❌ 実行エラー: '+e.message);}
 finally{try{ws&&ws.close();}catch(e){}try{proc.kill();}catch(e){}try{srv.close();}catch(e){}
  try{fs.rmSync(udd,{recursive:true,force:true});}catch(e){}

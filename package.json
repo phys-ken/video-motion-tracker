@@ -28,6 +28,6 @@
     "test:teacher": "node tests/teacher.test.js",
     "test:trim": "node tests/trim.test.js",
     "test:manual": "node tests/manual.test.js",
-    "shots": "node tools/gen_manual_shots.js"
+    "shots": "node tools/gen_manual_shots.js && node tools/gen_manual_pdf.js"
   }
 }

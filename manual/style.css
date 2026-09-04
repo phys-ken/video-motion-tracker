@@ -43,34 +43,34 @@ h1 { font-size: 1.45rem; line-height: 1.4; margin-top: 4px; }
     margin: 18px 0 26px;
     break-inside: avoid;
 }
-.goal-note { font-size: 0.86rem; color: var(--text-sub); margin-top: 8px; }
+.goal-note { font-size: 0.86rem; color: var(--text-sub); margin-top: 6px; }
 .goal .lead { margin: 0; }
 @media (max-width: 640px) { .goal { grid-template-columns: 1fr; } .goal figure { max-width: 220px; } }
 
-.lead {
-    background: var(--accent-soft);
-    border-radius: 8px;
-    padding: 13px 16px;
-    margin: 18px 0 26px;
-    font-size: 0.92rem;
-}
-.lead b { color: var(--accent-strong); }
+.lead { font-size: 1.0rem; font-weight: 700; line-height: 1.7; }
 
 /* ---- 手順: 左に画像・右に説明。狭い画面では縦に積む ---------------- */
+/* 手順は1枚ずつのカードにする。線1本で区切るだけだと、どこからどこまでが
+   ひとつの手順なのかが読み取りにくい。 */
 .step {
     display: grid;
-    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
-    gap: 18px 22px;
+    grid-template-columns: minmax(0, 330px) minmax(0, 1fr);
+    gap: 16px 22px;
     align-items: start;
-    padding: 18px 0 20px;
-    border-top: 1px solid var(--line-soft);
+    margin-bottom: 14px;
+    padding: 16px 18px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 5px solid var(--accent);
+    border-radius: 10px;
     break-inside: avoid;
     page-break-inside: avoid;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
 }
-.step:first-of-type { border-top: none; }
 .step-body { min-width: 0; }
 .step h2 {
-    font-size: 1.06rem;
+    font-size: 1.1rem;
     line-height: 1.5;
     margin-bottom: 6px;
     display: flex;
@@ -79,16 +79,21 @@ h1 { font-size: 1.45rem; line-height: 1.4; margin-top: 4px; }
 }
 .stepno {
     flex: 0 0 auto;
-    font-size: 0.8rem;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.86rem;
     font-weight: 700;
     color: #FFFFFF;
     background: var(--accent);
-    border-radius: 5px;
-    padding: 2px 9px;
+    border-radius: 50%;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
 }
-.step p { font-size: 0.93rem; margin-bottom: 6px; }
+.step p { font-size: 0.95rem; margin-bottom: 6px; }
+.step p.sub { font-size: 0.85rem; color: var(--text-sub); }
 .step p:last-child { margin-bottom: 0; }
 .step ul { margin: 4px 0 0 1.1em; font-size: 0.89rem; color: var(--text-sub); }
 .step li { margin-bottom: 2px; }
@@ -141,17 +146,6 @@ figcaption {
 .note b { color: var(--cal); }
 
 /* ---- 困ったとき ------------------------------------------------- */
-.trouble { margin-top: 34px; break-inside: avoid; }
-.trouble h2 {
-    font-size: 1.1rem;
-    padding-left: 11px;
-    border-left: 4px solid var(--accent);
-    margin-bottom: 12px;
-}
-table { border-collapse: collapse; width: 100%; font-size: 0.88rem; background: var(--surface); }
-th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
-th { background: var(--accent-soft); white-space: nowrap; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-
 footer.doc-footer {
     margin-top: 34px;
     padding-top: 12px;
@@ -161,15 +155,11 @@ footer.doc-footer {
 }
 footer.doc-footer a { color: var(--accent-strong); }
 
-.toolbar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    margin: 16px 0 0;
-}
+.toolbar { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 14px 0 0; }
 .btn-print {
     font: inherit;
+    text-decoration: none;
+    display: inline-block;
     font-size: 0.86rem;
     font-weight: 700;
     color: #FFFFFF;
@@ -180,7 +170,8 @@ footer.doc-footer a { color: var(--accent-strong); }
     cursor: pointer;
 }
 .btn-print:hover { background: var(--accent-strong); }
-.toolbar .hint { font-size: 0.78rem; color: var(--text-sub); }
+.btn-ghost { background: var(--surface); color: var(--accent-strong); border: 1px solid var(--accent); }
+.btn-ghost:hover { background: var(--accent-soft); }
 
 @media (max-width: 640px) {
     .step { grid-template-columns: 1fr; gap: 10px; }
@@ -195,11 +186,11 @@ footer.doc-footer a { color: var(--accent-strong); }
     body { background: #FFFFFF; font-size: 10.5pt; line-height: 1.6; }
     .page { max-width: none; padding: 0; }
     .toolbar { display: none; }
-    .step { grid-template-columns: minmax(0, 46%) minmax(0, 1fr); padding: 10px 0 12px; }
+    .step { grid-template-columns: minmax(0, 44%) minmax(0, 1fr); padding: 9px 11px 10px; margin-bottom: 8px; }
     .step h2 { font-size: 11.5pt; }
     .step p { font-size: 9.5pt; }
     figure img { border-color: #B0B8C0; max-height: 62mm; }
     figcaption { font-size: 8pt; }
-    .lead, .note, .trouble, table { break-inside: avoid; }
+    .goal { break-inside: avoid; }
     a { color: inherit; text-decoration: none; }
 }

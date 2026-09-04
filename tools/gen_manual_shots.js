@@ -62,6 +62,43 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
             return r.result.value;
         };
         fs.mkdirSync(OUT, { recursive: true });
+
+        // Tango のマニュアルのように、操作する場所を赤枠で囲ってから撮る。
+        // 画像の中に「どこを押すのか」が入っていれば、本文を読まなくても通じる。
+        const markOn = (sels) => ev(
+            'for (const s of ' + JSON.stringify(sels) + ') {' +
+            '  const e = document.querySelector(s); if (!e) continue;' +
+            '  const r = e.getBoundingClientRect();' +
+            '  const d = document.createElement("div");' +
+            '  d.setAttribute("data-manual-mark","1");' +
+            '  d.style.cssText = "position:absolute;pointer-events:none;z-index:99999;" +' +
+            '    "border:3px solid #E5484D;border-radius:9px;" +' +
+            '    "box-shadow:0 0 0 3px rgba(229,72,77,.22);" +' +
+            '    "left:" + (r.left + scrollX - 4) + "px;top:" + (r.top + scrollY - 4) + "px;" +' +
+            '    "width:" + (r.width + 8) + "px;height:" + (r.height + 8) + "px;";' +
+            '  document.body.appendChild(d);' +
+            '}' +
+            'await new Promise(r=>setTimeout(r,80));');
+
+        // 映像の上の十字は要素ではないので、画面中央に円を描いて囲う
+        const markCrosshair = (size) => ev(
+            'const S = ' + (size || 74) + ';' +
+            'const r = document.getElementById("tracker-canvas").getBoundingClientRect();' +
+            'const d = document.createElement("div");' +
+            'd.setAttribute("data-manual-mark","1");' +
+            'd.style.cssText = "position:absolute;pointer-events:none;z-index:99999;" +' +
+            '  "border:3px solid #E5484D;border-radius:50%;" +' +
+            '  "box-shadow:0 0 0 3px rgba(229,72,77,.22);" +' +
+            '  "left:" + (r.left + scrollX + r.width/2 - S/2) + "px;" +' +
+            '  "top:"  + (r.top + scrollY + r.height/2 - S/2) + "px;" +' +
+            '  "width:" + S + "px;height:" + S + "px;";' +
+            'document.body.appendChild(d);' +
+            'await new Promise(r=>setTimeout(r,80));');
+
+        const markOff = () => ev(
+            'document.querySelectorAll("[data-manual-mark]").forEach(e => e.remove());' +
+            'await new Promise(r=>setTimeout(r,40));');
+
         // sel で指定した要素を囲む矩形だけを切り出す（pad は余白px）
         const shot = async (name, sel, pad = 10) => {
             const box = await ev(`
@@ -122,12 +159,16 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         await ev(`localStorage.clear();location.reload();`); await sleep(1600);
 
         // ① 運動の種類を選ぶ
+        await markOn(['[data-mode="free-fall"]']);
         await shot('01_mode.png', ['.mode-panel'], 0);
+        await markOff();
 
         // ② 動画を読み込む（サンプル）
         await ev(`document.querySelector('[data-mode="free-fall"]').click();
                   await new Promise(r=>setTimeout(r,150));`);
+        await markOn(['#mode-btn-file', '#mode-btn-sample']);
         await shot('02_pick.png', ['.mode-actions', '.mode-foot'], 12);
+        await markOff();
 
         await ev(`window.closeModePanel();
                   await window.loadSampleByUrl('samples/free_fall.mp4','free_fall.mp4');`);
@@ -139,19 +180,24 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
                   document.getElementById('trim-set-in').click(); await new Promise(r=>setTimeout(r,200));
                   window.seekToFrame(58); await new Promise(r=>setTimeout(r,500));
                   document.getElementById('trim-set-out').click(); await new Promise(r=>setTimeout(r,300));`);
+        await markOn(['#trim-set-in', '#trim-set-out']);
         await shot('03b_trim_controls.png', ['.trim-slider', '.trim-frame', '.trim-jog', '.trim-set-row', '.trim-range'], 12);
+        await markOff();
         await ev(`document.getElementById('dialog-btn-ok').click();`);
         for (let i = 0; i < 60; i++) { if (!(await ev(`return appState.isScanning;`))) break; await sleep(500); }
         await sleep(800);
 
         // ④ スケールを決める（ものさしの左端 → 右端）。指で拡大した状態で撮る。
-        await shot('04_scale_banner.png', ['.scale-banner'], 6);
         await ev(`appState.viewState.scale = 2.6; await new Promise(r=>setTimeout(r,100));`);
         await centerOn(20, 930);          // ものさしの左端に十字を合わせた状態
+        await markCrosshair(70);
         await shotAroundCrosshair('04b_scale_start.png', -60, -140, 340, 196);
+        await markOff();
         await ev(`window.confirmAtCrosshair(); await new Promise(r=>setTimeout(r,400));`);
         await centerOn(520, 930);         // 右端へ動かすと両矢印が付いてくる
+        await markCrosshair(70);
         await shotAroundCrosshair('04d_scale_arrow.png', -280, -140, 340, 196);
+        await markOff();
         await ev(`
             const s=appState;
             s.calibration.scaleStart={x:20,y:930}; s.calibration.scaleEnd={x:520,y:930};
@@ -168,8 +214,12 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         const yBall = 80 + 0.5 * 9.8 * tBall * tBall * 500;   // gen_samples.py と同じ式
         await ev(`window.seekToFrame(${shotFrame}); await new Promise(r=>setTimeout(r,500));`);
         await centerOn(270, Math.round(yBall));
+        await markCrosshair(92);
         await shot('05_track.png', ['.canvas-container'], 6);
+        await markOff();
+        await markOn(['#btn-confirm']);
         await shot('05b_confirm.png', ['.action-bar'], 6);
+        await markOff();
 
         // 打点を作ってグラフを出す
         await ev(`
@@ -202,12 +252,16 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
             const send=(t,x)=>cv.dispatchEvent(new PointerEvent(t,{clientX:x,clientY:r.top+r.height/2,bubbles:true,pointerId:1}));
             send('pointerdown',r.left+r.width*0.2); send('pointermove',r.left+r.width*0.85); send('pointerup',r.left+r.width*0.85);
             await new Promise(r2=>setTimeout(r2,400));`);
+        await markOn(['#ggd-readout']);
         await shot('08_slope.png', ['#dialog-overlay .dialog'], 0);
+        await markOff();
         await ev(`document.getElementById('dialog-btn-ok').click(); await new Promise(r=>setTimeout(r,2500));`);
 
         // ⑦ 保存
         for (let i = 0; i < 60; i++) { if (await ev(`return !document.getElementById('strobe-final').hidden;`)) break; await sleep(500); }
+        await markOn(['#btn-slope-range', '#btn-strobe-save']);
         await shot('09c_save_controls.png', ['.submit-slope', '.submit-actions'], 12);
+        await markOff();
         await shot('09b_result.png', ['#strobe-final'], 6);
     } catch (e) { console.error('❌ ' + e.message); process.exitCode = 1; }
     finally { try { ws && ws.close(); } catch (e) {} try { proc.kill(); } catch (e) {}

@@ -7,173 +7,121 @@
 <meta name="description" content="動画解析トラッカーの使い方。自由落下の測定を7ステップで。">
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=2026-09-04a">
+<link rel="stylesheet" href="style.css?v=2026-09-05a">
 </head>
 <body>
 <div class="page">
 
 <header class="doc-header">
     <div class="doc-label">動画解析トラッカー</div>
-    <h1>使い方（自由落下のれい）</h1>
-    <div class="doc-meta">iPad で 7 ステップ。画面はサンプル動画のものです。</div>
+    <h1>使い方</h1>
+    <div class="doc-meta">自由落下のれい／iPad／7ステップ</div>
 </header>
 
 <section class="goal">
-    <div class="goal-body">
-        <p class="lead">
-            やることは <b>「動画を読む → ものさしを測る → ボールに点を打つ → 画像を保存する」</b> だけです。
-            まちがえても、たいていの操作は<b>やり直せます</b>。
-        </p>
-        <p class="goal-note">できあがるのは、この1枚の画像です。これを提出します。</p>
+    <div>
+        <p class="lead">動画を読む → ものさしを測る → ボールに点を打つ → 画像を保存する。</p>
+        <p class="goal-note">この1枚を提出します。赤い枠が、押すところです。</p>
+        <div class="toolbar">
+            <a class="btn-print" href="manual.pdf" download>PDFを保存</a>
+            <button class="btn-print btn-ghost" id="btn-print">印刷</button>
+        </div>
     </div>
     <figure>
-        <img src="img/09b_result.png" alt="提出用の画像。左にボールの残像、右にy-tとvy-tのグラフ、下に照合コードが入っている。">
+        <img src="img/09b_result.png" alt="提出用の画像。左にボールの残像、右にグラフ、下に照合コード。">
     </figure>
 </section>
 
-<div class="toolbar">
-    <button class="btn-print" id="btn-print">このページを印刷 / PDF保存</button>
-    <span class="hint">iPad は 共有ボタン → プリント → 指を広げて PDF にできます。</span>
-</div>
-
-<!-- ① -->
 <section class="step">
     <figure>
-        <img src="img/01_mode.png" alt="運動の種類をえらぶパネル。自由落下・投げおろし、鉛直投げ上げ、水平投射、斜方投射、カスタムの5つ。">
-        <figcaption>アプリを開くと最初に出る画面</figcaption>
+        <img src="img/01_mode.png" alt="運動の種類をえらぶパネル。自由落下・投げおろしが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
-        <h2><span class="stepno">1</span>どの運動を測るかえらぶ</h2>
-        <p><span class="ui">自由落下・投げおろし</span> をタップします。</p>
-        <p>ここでえらぶと、<b>どちら向きを正にするか</b>と<b>最初に出すグラフ</b>が決まります。
-           自由落下は<b>下向きが正</b>です。</p>
-        <div class="note">あとから画面左上の種類のボタンでえらび直せます。</div>
+        <h2><span class="stepno">1</span>運動の種類をえらぶ</h2>
+        <p><span class="ui">自由落下・投げおろし</span> をタップ。</p>
     </div>
 </section>
 
-<!-- ② -->
 <section class="step">
     <figure>
-        <img src="img/02_pick.png" alt="動画を選択ボタンとサンプルで試すボタン。">
-        <figcaption>種類をえらぶと押せるようになる</figcaption>
+        <img src="img/02_pick.png" alt="動画を選択ボタンとサンプルで試すボタンが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
         <h2><span class="stepno">2</span>動画を読みこむ</h2>
-        <p>自分でとった動画は <span class="ui">動画を選択</span>、
-           練習は <span class="ui">サンプルで試す</span> をタップします。</p>
-        <p>動画は<b>とった iPad の Safari で開く</b>のが確実です。</p>
+        <p>自分の動画は <span class="ui">動画を選択</span>、練習は <span class="ui">サンプルで試す</span>。</p>
+        <p class="sub">動画は、とった iPad の Safari で開くのが確実です。</p>
     </div>
 </section>
 
-<!-- ③ -->
 <section class="step">
     <figure>
-        <img src="img/03b_trim_controls.png" alt="スライダ、コマ送りボタン、ここから使う・ここまで使うボタン、使うコマ数の表示。">
-        <figcaption>読みこんだ直後に出る画面の下半分</figcaption>
+        <img src="img/03b_trim_controls.png" alt="スライダとコマ送りボタン。ここから使う・ここまで使うが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
         <h2><span class="stepno">3</span>使う範囲を決める</h2>
-        <p>ボールが<b>動き出すコマ</b>で <span class="ui">ここから使う</span>、
-           <b>動き終わるコマ</b>で <span class="ui">ここまで使う</span> をタップします。</p>
-        <p>コマは<b>スライダでだいたい</b>、
-           <span class="ui">‹10</span> <span class="ui">‹1</span>
-           <span class="ui">1›</span> <span class="ui">10›</span> で<b>きっちり</b>合わせます。</p>
-        <p>できたら <span class="ui">はじめる</span>。</p>
-        <div class="note">動画は消えません。<b>全部に戻す</b>でいつでも元どおりです。</div>
+        <p>動き出すコマで <span class="ui">ここから使う</span>、動き終わるコマで <span class="ui">ここまで使う</span>。
+           そのあと <span class="ui">はじめる</span>。</p>
+        <p class="sub">スライダでだいたい、<span class="ui">‹1</span> <span class="ui">1›</span> できっちり。
+           <span class="ui">全部に戻す</span> でいつでも元どおり。</p>
     </div>
 </section>
 
-<!-- ④ -->
 <section class="step">
     <figure>
-        <img src="img/04_scale_banner.png" alt="スケールを決めます 1/2。長さが分かるものの片方の端に十字を合わせて確定してください、という案内。">
-        <img src="img/04b_scale_start.png" alt="ものさしの左はしに、画面中央の十字をぴったり合わせたところ。">
-        <img src="img/04d_scale_arrow.png" alt="片方を決めたあと、十字まで矢印がのびて、選んでいる長さが見えている。">
-        <figcaption>上: 画面に出る案内 ／ 下: 左はし → 右はし の順に合わせる</figcaption>
+        <img src="img/04b_scale_start.png" alt="ものさしの左はしに、赤丸で囲まれた十字を合わせたところ。">
+        <img src="img/04d_scale_arrow.png" alt="反対のはしまで十字を動かし、矢印で長さを選んでいるところ。">
     </figure>
     <div class="step-body">
         <h2><span class="stepno">4</span>ものさしの長さを教える</h2>
-        <p>映像を指で動かして、<b>ものさしのはし</b>に<b>画面中央の十字</b>を合わせ、
-           <span class="ui">スケール始点を確定</span> をタップします。</p>
-        <p>もう一方のはしでも同じようにタップし、<b>その長さ（cm）</b>を入力します。</p>
-        <div class="note">ここをとばすと、答えが cm ではなく<b>ピクセル</b>のままになります。</div>
+        <p>ものさしのはしに<b>十字</b>を合わせて <span class="ui">スケール始点を確定</span>。
+           反対のはしでも同じようにタップし、<b>長さ（cm）</b>を入力。</p>
+        <p class="sub">とばすと、答えが cm ではなくピクセルのままになります。</p>
     </div>
 </section>
 
-<!-- ⑤ -->
 <section class="step">
     <figure>
-        <img src="img/05_track.png" alt="ボールに画面中央の十字を合わせたところ。">
-        <img src="img/05b_confirm.png" alt="確定（点を打つ）ボタンと、10コマ・1コマずつ進むボタン。">
-        <figcaption>十字を合わせて確定。次のコマへ自動で進む</figcaption>
+        <img src="img/05_track.png" alt="ボールの中心に、赤丸で囲まれた十字を合わせたところ。">
+        <img src="img/05b_confirm.png" alt="確定（点を打つ）ボタンが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
         <h2><span class="stepno">5</span>ボールに点を打つ</h2>
-        <p>映像を動かして<b>ボールの中心</b>に十字を合わせ、
-           <span class="ui">確定（点を打つ）</span> をタップします。</p>
-        <p>打つと<b>次のコマへ自動で進みます</b>。最後までくり返します。</p>
-        <div class="note">まちがえたら <span class="ui">取消</span>。1つ前の点が消えます。</div>
+        <p>ボールの中心に十字を合わせて <span class="ui">確定（点を打つ）</span>。
+           次のコマへ進むので、最後までくり返します。</p>
+        <p class="sub">まちがえたら <span class="ui">取消</span>。</p>
     </div>
 </section>
 
-<!-- ⑥ -->
 <section class="step">
     <figure>
-        <img src="img/06_graph.png" alt="y-tグラフとvy-tグラフ。y-tは曲線、vy-tは直線になっている。">
-        <figcaption>点を打つほどグラフがのびていく</figcaption>
+        <img src="img/06_graph.png" alt="y-tグラフとvy-tグラフ。">
     </figure>
     <div class="step-body">
         <h2><span class="stepno">6</span>グラフを見る</h2>
-        <p>右側にグラフが出ます。うまく測れていれば
-           <b>y–t はカーブ</b>、<b>vy–t はまっすぐな線</b>になります。</p>
-        <p>グラフをタップすると大きく表示できます。</p>
+        <p>点を打つとグラフがのびていきます。タップすると大きくなります。</p>
     </div>
 </section>
 
-<!-- ⑦ -->
 <section class="step">
     <figure>
-        <img src="img/08_slope.png" alt="vy-tグラフを大きく表示し、横にドラッグして区間を選んだところ。傾きとR2が出ている。">
-        <img src="img/09c_save_controls.png" alt="傾きを表示するチェック、傾きの区間を決めるボタン、画像を共有・保存ボタン。">
-        <figcaption>区間をえらぶ → 保存する</figcaption>
+        <img src="img/08_slope.png" alt="vy-tグラフを横にドラッグして区間をえらび、傾きが赤枠で示されている。">
+        <img src="img/09c_save_controls.png" alt="傾きの区間を決めるボタンと、画像を共有・保存ボタンが赤枠で囲まれている。">
     </figure>
     <div class="step-body">
-        <h2><span class="stepno">7</span>結果を保存して出す</h2>
-        <p><span class="ui">実験結果を保存</span> をタップします。</p>
-        <p><span class="ui">傾きの区間を決める</span> を押し、グラフの上を<b>横にドラッグ</b>して、
-           まっすぐな部分をえらびます。ここの傾きが<b>重力加速度</b>です。</p>
-        <p><span class="ui">画像を共有・保存</span> で写真に保存し、提出します。</p>
-        <div class="note">画像には<b>照合コード</b>（8けた）が入ります。打った点から作られるので、
-           人によって必ずちがう値になります。</div>
+        <h2><span class="stepno">7</span>保存して出す</h2>
+        <p><span class="ui">実験結果を保存</span> → <span class="ui">傾きの区間を決める</span> でグラフを<b>横にドラッグ</b>。
+           この傾きが<b>重力加速度</b>です。</p>
+        <p><span class="ui">画像を共有・保存</span> で写真に保存して提出します。</p>
+        <p class="sub">画像には照合コード（8けた）が入ります。</p>
     </div>
-</section>
-
-<section class="trouble">
-    <h2>こまったとき</h2>
-    <table>
-        <tr><th>こまったこと</th><th>どうする</th></tr>
-        <tr><td>動画が開かない</td>
-            <td>その動画をとった iPad の Safari で開く。ほかの端末に送ると開けないことがあります。</td></tr>
-        <tr><td>前の人の点が残っている</td>
-            <td>最初のパネルで種類をえらび直せば消えます。自分の続きなら、同じ動画をえらび直すと数秒だけ「戻す」が出ます。</td></tr>
-        <tr><td>コマが動かない</td>
-            <td>使う範囲の外に出ようとしています。範囲を広げるか、そのまま進めてください。</td></tr>
-        <tr><td>画像が保存できない</td>
-            <td>画面に出ている完成画像を<b>長押し</b>して「写真に追加」でも保存できます。</td></tr>
-        <tr><td>グラフがガタガタ</td>
-            <td>スケールを決めたか、コマを飛ばさずに打ったかを確認。暗い場所でとるとボールがぶれます。</td></tr>
-    </table>
 </section>
 
 <footer class="doc-footer">
-    動画解析トラッカー — <a href="../">アプリを開く</a> ／
-    <a href="../guide/">実験のやり方（自由落下）</a><br>
-    画面は自由落下のサンプル動画のものです。アプリの見た目が変わったら、この画面写真も差し替えます。
+    <a href="../">アプリを開く</a> ／ <a href="../guide/">実験のやり方</a>
 </footer>
 
 </div>
 <script>
-    // 印刷ボタン。iPad では共有→プリントの経路もあるので、押せなくても困らない補助。
     document.getElementById('btn-print').addEventListener('click', () => window.print());
 </script>
 </body>

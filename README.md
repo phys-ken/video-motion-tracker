@@ -21,7 +21,9 @@
 | [開く](https://phys-ken.github.io/video-motion-tracker/) | [開く](https://phys-ken.github.io/video-motion-tracker/manual/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/vertical_throw.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/projectile.html) | [開く](https://phys-ken.github.io/video-motion-tracker/guide/oblique.html) |
 
 **使い方**は画面写真つきの1ページで、アプリの操作だけを7ステップで説明します。
-ブラウザの印刷から**そのまま PDF（A4・4ページ）**にできます。
+押す場所は画像の中に**赤枠**で示してあります。配布用の
+[PDF](https://phys-ken.github.io/video-motion-tracker/manual/manual.pdf)（A4・3ページ）も
+リポジトリに置いてあります（`manual/manual.pdf`）。
 **手順書**は実験そのもの（何を用意し、どう撮るか）の説明です。
 
 誤り訂正レベル H（30%）で作ってあるので、印刷が多少かすれても読み取れます。
@@ -69,7 +71,7 @@ URL を変えたときは `tools/gen_assets.py` で再生成してください�
 | `tools/` | サンプル動画・アイコン・QRのジェネレータ |
 | `serve.py` | ローカル開発サーバ（キャッシュ無効・LAN公開） |
 | `test_logic.js` / `tests/` / `test.html` | テスト一式 |
-| `manual/` | 生徒向けの使い方（画面写真つき・印刷/PDF対応）。写真は `tools/gen_manual_shots.js` で再生成 |
+| `manual/` | 生徒向けの使い方（画面写真つき）と配布用PDF。`npm run shots` で再生成 |
 | `teacher/` | 提出画像の照合ページ（教員用・アプリからのリンクなし） |
 | `docs/CLASSROOM.md` | 授業当日の手引き（教員用） |
 | `vendor/` | 同梱ライブラリ（[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)） |
@@ -87,7 +89,7 @@ npm run test:ipad     # iPadのUA・タッチ・回転で通しで検証（縦�
 npm run test:teacher  # 教員用の照合ページが重複を見つけられるかを検証
 npm run test:trim     # 「使う範囲を決める」画面（表示の一貫性・帯・44px・コマ落ち）
 npm run test:manual   # 使い方ページ（画像の欠け・alt・横スクロール・印刷）
-npm run shots         # 使い方ページの画面写真を撮り直す（UIを変えたら実行）
+npm run shots         # 使い方ページの画面写真と配布用PDFを作り直す（UIを変えたら実行）
 npm run test:all      # 上記すべて
 ```
 
