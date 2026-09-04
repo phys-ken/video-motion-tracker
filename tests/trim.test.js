@@ -107,7 +107,26 @@ try {
     const big = a => a[0] >= 44 && a[1] >= 44;
     ok(big(hit.p10) && big(hit.p1) && big(hit.n1) && big(hit.n10),
         `コマ送りが4つとも44px以上 (${hit.p10.join('x')})`);
-    ok(big(hit.setIn) && big(hit.setOut), `ここから／ここまでが44px以上 (${hit.setIn.join('x')})`);
+    ok(big(hit.setIn) && big(hit.setOut), `ここから使う／ここまで使うが44px以上 (${hit.setIn.join('x')})`);
+    // ボタンの名前と記号。|< >| は「最初/最後へ移動」の記号で、押しても移動しない
+    // このボタンに使うと嘘になる（調べた製品にも転用例がなかった）
+    const labels = await ev(cdp, S, `
+        // アイコンは <span> の中の合字なので、テキストだけを取り出す
+        const t=(id)=>{const e=document.getElementById(id).cloneNode(true);
+            e.querySelectorAll('.material-icons-round').forEach(x=>x.remove());
+            return e.textContent.trim();};
+        const ic=(id)=>document.getElementById(id).querySelector('.material-icons-round').textContent.trim();
+        const bi=document.getElementById('btn-range-in'), bo=document.getElementById('btn-range-out');
+        return {inT:t('trim-set-in'), outT:t('trim-set-out'), inI:ic('trim-set-in'), outI:ic('trim-set-out'),
+                barI:bi.querySelector('.material-icons-round').textContent.trim(),
+                barO:bo.querySelector('.material-icons-round').textContent.trim(),
+                barTitle:bi.title, guide:document.querySelector('.trim-guide').textContent};`);
+    ok(labels.inT === 'ここから使う' && labels.outT === 'ここまで使う',
+        `ボタン名が動作を言っている (${labels.inT} / ${labels.outT})`);
+    ok(!/first_page|last_page/.test(labels.inI + labels.outI + labels.barI + labels.barO),
+        '移動を意味する記号（|< >|）を設定ボタンに使っていない');
+    ok(/ここから使う/.test(labels.barTitle), `画面下のボタンも同じ呼び名 (${labels.barTitle.slice(0, 12)}…)`);
+    ok(!/切/.test(labels.guide), `説明文も「使う」で揃っている (${labels.guide.trim().slice(0, 24)}…)`);
     // スライダは横いっぱい。1コマ2pxでは指で狙えないので、粗い位置決めだけを担わせる
     ok(hit.sliderW > hit.dlgW * 0.8, `スライダが横いっぱいにある (${hit.sliderW}px / ダイアログ ${hit.dlgW}px)`);
 

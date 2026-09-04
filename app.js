@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-04c';
+const APP_VERSION = '2026-09-04d';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -1806,7 +1806,7 @@ function showTrimDialog(onClose) {
         <div class="trim-info">${frameNo(appState.totalFrames)} コマ / ${fps} / ${dur}</div>
         ${longVideo ? `<p class="trim-long-warn">長い動画です。解析したい運動の<b>数秒だけ</b>に
             必ず絞ってください（絞らないと打点マップなど一部の表示が制限されます）。</p>` : ''}
-        <p class="trim-guide">運動していない<b>前後のコマを切って</b>おくと、あとの点打ちがラクです。</p>
+        <p class="trim-guide">運動している<b>ところだけを使う</b>ようにしておくと、あとの点打ちがラクです。</p>
         <canvas id="trim-preview" width="640" height="300"></canvas>
         <!-- スライダは横いっぱい。1コマ分の幅は 80コマで約2px、300コマなら 0.6px しかなく、
              指では狙えない。位置決めは「スライダでだいたい → コマ送りできっちり」に分ける。 -->
@@ -1826,13 +1826,13 @@ function showTrimDialog(onClose) {
                 <span class="material-icons-round">forward_10</span><span class="jog-label">10›</span></button>
         </div>
         <div class="trim-controls trim-set-row">
-            <button class="btn btn-secondary btn-small" id="trim-set-in"><span class="material-icons-round">first_page</span>ここから</button>
-            <button class="btn btn-secondary btn-small" id="trim-set-out"><span class="material-icons-round">last_page</span>ここまで</button>
+            <button class="btn btn-secondary btn-small" id="trim-set-in"><span class="material-icons-round">align_horizontal_left</span>ここから使う</button>
+            <button class="btn btn-secondary btn-small" id="trim-set-out"><span class="material-icons-round">align_horizontal_right</span>ここまで使う</button>
             <button class="btn btn-small btn-quiet" id="trim-reset" hidden>全部に戻す</button>
         </div>
         <div class="trim-range" id="trim-range-lbl">${trimRangeText()}</div>
-        <p class="trim-skip">切らずに<b>はじめる</b>でもかまいません。あとから画面下の
-            <b>［ここから］［ここまで］</b>でやり直せます。</p>
+        <p class="trim-skip">全部使う（＝そのまま<b>はじめる</b>）でもかまいません。
+            あとから画面下の<b>同じボタン</b>でやり直せます。</p>
     `;
 
     // ボタンを「はじめる」1つに（cleanupで元へ戻す）
