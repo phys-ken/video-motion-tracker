@@ -91,6 +91,22 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
             made++;
         };
 
+        // 映像の中の1点に十字を合わせると、その点が画面の端に近いほど、映像が画面の外へ
+        // はみ出して黒い余白が広く写る（サンプルのものさしは画面の端いっぱいにある）。
+        // マニュアルでは十字まわりだけを接写して、何をしているかが分かる絵にする。
+        const shotAroundCrosshair = async (name, dx, dy, w, h) => {
+            const c = await ev(`
+                const r = document.getElementById('tracker-canvas').getBoundingClientRect();
+                return {cx: r.left + scrollX + r.width/2, cy: r.top + scrollY + r.height/2};`);
+            const clip = { x: c.cx + dx, y: c.cy + dy, width: w, height: h,
+                           scale: Math.min(2, Math.max(1, 760 / w)) };
+            const r = await cdp.send('Page.captureScreenshot', { format: 'png', clip, captureBeyondViewport: true }, S);
+            const fp = path.join(OUT, name);
+            fs.writeFileSync(fp, Buffer.from(r.data, 'base64'));
+            console.log(`  ${name}  ${w}x${h}  ${(fs.statSync(fp).size / 1024).toFixed(0)}KB`);
+            made++;
+        };
+
         // 映像内の座標が画面中央（＝十字の位置）に来るように視点を動かす。
         // 実際に生徒がやる「対象に十字を合わせる」状態を再現するため。
         const centerOn = (vx, vy) => ev(
@@ -128,12 +144,14 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         for (let i = 0; i < 60; i++) { if (!(await ev(`return appState.isScanning;`))) break; await sleep(500); }
         await sleep(800);
 
-        // ④ スケールを決める（ものさしの左端 → 右端）
+        // ④ スケールを決める（ものさしの左端 → 右端）。指で拡大した状態で撮る。
+        await shot('04_scale_banner.png', ['.scale-banner'], 6);
+        await ev(`appState.viewState.scale = 2.6; await new Promise(r=>setTimeout(r,100));`);
         await centerOn(20, 930);          // ものさしの左端に十字を合わせた状態
-        await shot('04b_scale_start.png', ['.canvas-container'], 6);
+        await shotAroundCrosshair('04b_scale_start.png', -60, -140, 340, 196);
         await ev(`window.confirmAtCrosshair(); await new Promise(r=>setTimeout(r,400));`);
         await centerOn(520, 930);         // 右端へ動かすと両矢印が付いてくる
-        await shot('04d_scale_arrow.png', ['.canvas-container'], 6);
+        await shotAroundCrosshair('04d_scale_arrow.png', -280, -140, 340, 196);
         await ev(`
             const s=appState;
             s.calibration.scaleStart={x:20,y:930}; s.calibration.scaleEnd={x:520,y:930};
