@@ -1602,14 +1602,17 @@ body.calibrating .canvas-container {
 }
 .dialog-close:hover { background: var(--surface-2); color: var(--text); }
 .dialog-close .material-icons-round { font-size: 20px; }
+/* 既定（縦向き・狭い画面）は1列。上に画像、下に操作。 */
+.submit-body { display: grid; gap: 14px; }
+.submit-view { min-width: 0; }
+.submit-ctrl { min-width: 0; }
+
 .submit-row {
-    display: flex; align-items: center; gap: 14px;
+    display: flex; align-items: center; gap: 12px;
     flex-wrap: wrap; font-size: 0.85rem; margin-bottom: 8px;
-    padding-right: 40px;   /* 閉じるボタンに重ならないように */
 }
 .submit-row-label { color: var(--text-sub); }
 .submit-row label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.submit-row .submit-row-end { margin-left: auto; }
 /* プレビューは高さを抑える。縦長の動画だと画面いっぱいに伸びて、
    下にある「保存」ボタンや傾きの設定が画面外に押し出されてしまうため。 */
 /* display を指定すると [hidden] が効かなくなるので、明示的に打ち消す */
@@ -1655,8 +1658,23 @@ body.calibrating .canvas-container {
 }
 .btn-quiet:hover { background: var(--surface-2); color: var(--text); }
 
+/* 横向きで幅に余裕があるとき（iPad 横持ちなど）は2列にする。
+   1列のままだと、行が画面幅いっぱいに伸びてラベルとボタンが遠く離れ、
+   どの文字がどのボタンの説明なのか分からなくなる。 */
+@media (min-width: 900px) and (orientation: landscape) {
+    .submit-body {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+        align-items: start;
+        gap: 0 22px;
+    }
+    .submit-preview { max-height: 62svh; }
+    .submit-sliders { flex-direction: column; gap: 10px; }
+    .submit-slope { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .submit-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+    .submit-status { text-align: center; }
+}
+
 @media (max-width: 600px) {
     .submit-sliders { flex-direction: column; gap: 8px; }
-    .submit-row { padding-right: 44px; }
     .submit-preview { max-height: 34svh; }
 }

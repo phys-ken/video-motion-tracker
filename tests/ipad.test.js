@@ -157,9 +157,17 @@ try{
 
  // ---------- 4) 提出画像の保存 ----------
  console.log('\n--- 提出画像の保存 ---');
- // 既定は「傾きを表示する」がオン。区間を決めるまで保存できないので、開く前に決めておく
- await ev(cdp,S,`appState.slopeRange={a:0.05,b:0.60};return true;`);
- await ev(cdp,S,`document.getElementById('btn-submit').click();await new Promise(r=>setTimeout(r,300));`);
+ // 保存は2段階。①区間を選ぶ → ②画像を作る。ここでは①を通してからパネルを見る
+ await ev(cdp,S,`
+   document.getElementById('btn-submit').click();
+   await new Promise(r=>setTimeout(r,700));
+   const cv=document.getElementById('ggd-canvas');
+   const r=cv.getBoundingClientRect();
+   const send=(t,x)=>cv.dispatchEvent(new PointerEvent(t,{clientX:x,clientY:r.top+r.height/2,bubbles:true,pointerId:1}));
+   send('pointerdown',r.left+r.width*0.2); send('pointermove',r.left+r.width*0.85); send('pointerup',r.left+r.width*0.85);
+   await new Promise(r2=>setTimeout(r2,300));
+   document.getElementById('dialog-btn-ok').click();
+   await new Promise(r2=>setTimeout(r2,600));`);
  let ready=null;
  for(let i=0;i<60;i++){ready=await ev(cdp,S,`
    const img=document.getElementById('strobe-final'),st=document.getElementById('strobe-status');
@@ -203,47 +211,57 @@ try{
  await shot('ipad_4b_save.png');
  await ev(cdp,S,`document.getElementById('submit-close').click();await new Promise(r=>setTimeout(r,200));`);
 
- // ---------- 4b) 傾きの区間と端末判定 ----------
- console.log('\n--- 傾きの区間と端末判定 ---');
- // 区間が未設定だと保存できない（チェックは既定でオン）
- const gate=await ev(cdp,S,`
-   appState.slopeRange=null;appState.showSlope=true;
+ // ---------- 4b) 保存の流れと端末判定 ----------
+ console.log('\n--- 保存の流れ（①区間 → ②画像）と端末判定 ---');
+ // 授業で「区間を決めないまま画像を出す」ことが起きたので、
+ // 保存画面へ入る前に必ず区間を選ぶ画面を通す
+ await ev(cdp,S,`document.getElementById('submit-close').click();await new Promise(r=>setTimeout(r,200));`);
+ const step1=await ev(cdp,S,`
+   appState.slopeRange=null; appState.showSlope=true;
    document.getElementById('btn-submit').click();
-   await new Promise(r=>setTimeout(r,900));
-   const st=document.getElementById('slope-state');
-   return {disabled:document.getElementById('btn-strobe-save').disabled,
-           rowShown:!document.getElementById('submit-slope').hidden,
-           warn:st.className.includes('warn'),text:st.textContent};`);
- ok(gate.rowShown&&gate.disabled&&gate.warn,`区間未設定だと保存ボタンが押せない (${gate.text})`);
- // 区間を決めると保存できるようになり、画像の中に区間が印字される
- const set=await ev(cdp,S,`
-   document.getElementById('btn-slope-range').click();
-   await new Promise(r=>setTimeout(r,500));
-   const dlgShown=getComputedStyle(document.getElementById('dialog-overlay')).display!=='none';
-   const panelStill=getComputedStyle(document.getElementById('submit-overlay')).display!=='none';
+   await new Promise(r=>setTimeout(r,800));
+   const dlg=document.getElementById('dialog-overlay');
+   const panel=document.getElementById('submit-overlay');
+   const okBtn=document.getElementById('dialog-btn-ok');
+   const skip=document.getElementById('dialog-btn-cancel');
+   return {dlgShown:getComputedStyle(dlg).display!=='none',
+           panelHidden:getComputedStyle(panel).display==='none',
+           title:document.getElementById('dialog-title').textContent,
+           okLabel:okBtn.textContent.trim(), okDisabled:okBtn.disabled,
+           skipShown:getComputedStyle(skip).display!=='none', skipLabel:skip.textContent.trim()};`);
+ ok(step1.dlgShown&&step1.panelHidden,'［実験結果を保存］で、まず区間を選ぶ画面が出る');
+ ok(/区間を選ぶ/.test(step1.title),`見出しが手順の①になっている (${step1.title})`);
+ ok(step1.okDisabled,'区間を選ぶまで［次へ］は押せない');
+ ok(step1.skipShown&&/傾きなし/.test(step1.skipLabel),`自分で選べば傾きなしでも進める (${step1.skipLabel})`);
+
+ // ドラッグで区間を選ぶと［次へ］が押せるようになり、押すと画像の画面へ進む
+ const step2=await ev(cdp,S,`
    const cv=document.getElementById('ggd-canvas');
    const r=cv.getBoundingClientRect();
-   const send=(type,x)=>cv.dispatchEvent(new PointerEvent(type,{clientX:x,clientY:r.top+r.height/2,bubbles:true,pointerId:1}));
-   send('pointerdown',r.left+r.width*0.35);send('pointermove',r.left+r.width*0.8);send('pointerup',r.left+r.width*0.8);
-   await new Promise(r2=>setTimeout(r2,200));
-   const readout=document.getElementById('ggd-readout').textContent;
+   const send=(t,x)=>cv.dispatchEvent(new PointerEvent(t,{clientX:x,clientY:r.top+r.height/2,bubbles:true,pointerId:1}));
+   send('pointerdown',r.left+r.width*0.25); send('pointermove',r.left+r.width*0.9); send('pointerup',r.left+r.width*0.9);
+   await new Promise(r2=>setTimeout(r2,300));
+   const okNow=!document.getElementById('dialog-btn-ok').disabled;
    document.getElementById('dialog-btn-ok').click();
-   await new Promise(r2=>setTimeout(r2,1500));
-   return {dlgShown,panelStill,readout:readout.slice(0,60),
-           range:appState.slopeRange,
-           disabled:document.getElementById('btn-strobe-save').disabled,
+   await new Promise(r2=>setTimeout(r2,900));
+   return {okNow, panelShown:getComputedStyle(document.getElementById('submit-overlay')).display!=='none',
+           range:appState.slopeRange, showSlope:appState.showSlope,
            state:document.getElementById('slope-state').textContent};`);
- ok(set.dlgShown&&set.panelStill,'区間ダイアログは提出パネルの上に重なって開く（パネルは消えない）');
- ok(set.range&&set.range.b>set.range.a,`ドラッグで区間が決まる (${set.state})`);
- ok(!set.disabled,'区間を決めると保存できるようになる');
- // 傾きのチェックを外せば区間なしでも保存できる
- const off=await ev(cdp,S,`
-   appState.slopeRange=null;
-   const c=document.getElementById('slope-show');c.checked=false;
+ ok(step2.okNow,'区間を選ぶと［次へ］が押せるようになる');
+ ok(step2.panelShown&&step2.range&&step2.range.b>step2.range.a,
+    `［次へ］で画像の画面へ進み、区間が引き継がれる (${step2.state})`);
+
+ // 「グラフを付ける」を外しても、区間を選ぶ手順は済んでいる（授業で起きた抜けの防止）
+ const noGraph=await ev(cdp,S,`
+   const c=document.getElementById('strobe-report'); c.checked=false;
    c.dispatchEvent(new Event('change'));
-   await new Promise(r=>setTimeout(r,1500));
-   return {disabled:document.getElementById('btn-strobe-save').disabled,showSlope:appState.showSlope};`);
- ok(!off.disabled&&!off.showSlope,'傾きを出さない設定なら区間なしでも保存できる');
+   await new Promise(r=>setTimeout(r,1800));
+   return {disabled:document.getElementById('btn-strobe-save').disabled,
+           range:appState.slopeRange};`);
+ ok(!noGraph.disabled&&!!noGraph.range,'グラフなしのストロボでも、区間は決めたうえで保存できる');
+ await ev(cdp,S,`const c=document.getElementById('strobe-report');c.checked=true;
+   c.dispatchEvent(new Event('change'));await new Promise(r=>setTimeout(r,1800));return 1;`);
+
  // 端末判定: iPad は共有、Windows は直ダウンロード
  const os=await ev(cdp,S,`
    const f=window.isHandheldUA;
@@ -258,6 +276,44 @@ try{
  ok(os.iphone===true&&os.android===true,'iPhone と Android は共有シート');
  ok(os.here===true&&/共有/.test(os.label),`いまの端末（iPad相当）では共有の文言になる (${os.label})`);
  await ev(cdp,S,`document.getElementById('submit-close').click();await new Promise(r=>setTimeout(r,200));`);
+
+ // ---------- 4c) 横向きでの提出パネル ----------
+ // 授業で「横向きだとボタンと文字の位置がずれる」報告があった。
+ // 1列のままだと行が画面幅いっぱいに伸び、ラベルとボタンが遠く離れてしまう。
+ console.log('\n--- 横向きの提出パネル ---');
+ await cdp.send('Emulation.setDeviceMetricsOverride',{width:1180,height:820,deviceScaleFactor:2,mobile:true},S);
+ await ev(cdp,S,`window.dispatchEvent(new Event('resize'));await new Promise(r=>setTimeout(r,400));`);
+ await ev(cdp,S,`
+   appState.slopeRange={a:0.5,b:0.9}; appState.showSlope=true;
+   document.getElementById('btn-submit').click();
+   await new Promise(r=>setTimeout(r,700));
+   const cv=document.getElementById('ggd-canvas');
+   if (cv) { const r=cv.getBoundingClientRect();
+     const send=(t,x)=>cv.dispatchEvent(new PointerEvent(t,{clientX:x,clientY:r.top+r.height/2,bubbles:true,pointerId:1}));
+     send('pointerdown',r.left+r.width*0.25); send('pointermove',r.left+r.width*0.9); send('pointerup',r.left+r.width*0.9);
+     await new Promise(r2=>setTimeout(r2,250));
+     document.getElementById('dialog-btn-ok').click(); await new Promise(r2=>setTimeout(r2,900)); }`);
+ for(let i=0;i<40;i++){if(await ev(cdp,S,`return !document.getElementById('strobe-final').hidden;`))break;await sleep(500);}
+ const wide=await ev(cdp,S,`
+   const d=document.querySelector('.submit-overlay .dialog');
+   const r=d.getBoundingClientRect();
+   const view=document.querySelector('.submit-view').getBoundingClientRect();
+   const ctrl=document.querySelector('.submit-ctrl').getBoundingClientRect();
+   const row=(sel)=>document.querySelector(sel).getBoundingClientRect();
+   const slope=row('.submit-slope'), act=row('.submit-actions');
+   return {twoCol: view.right <= ctrl.left + 1,
+           ctrlW: Math.round(ctrl.width),
+           fits: r.top>=-1 && r.bottom<=innerHeight+1,
+           slopeW: Math.round(slope.width), actW: Math.round(act.width),
+           saveVisible: (()=>{const b=document.getElementById('btn-strobe-save').getBoundingClientRect();
+                              return b.top>=0 && b.bottom<=innerHeight+1 && b.width>0;})()};`);
+ ok(wide.twoCol,'横向きでは左に画像・右に操作の2列になる');
+ ok(wide.ctrlW<=420,`操作の列が広がりすぎない（${wide.ctrlW}px）`);
+ ok(wide.slopeW<=420&&wide.actW<=420,'ラベルとボタンが横に離れない');
+ ok(wide.fits&&wide.saveVisible,'横向きでもダイアログ全体と保存ボタンが画面に収まる');
+ await ev(cdp,S,`document.getElementById('submit-close').click();await new Promise(r=>setTimeout(r,200));`);
+ await cdp.send('Emulation.setDeviceMetricsOverride',{width:820,height:1180,deviceScaleFactor:2,mobile:true},S);
+ await ev(cdp,S,`window.dispatchEvent(new Event('resize'));await new Promise(r=>setTimeout(r,400));`);
 
  // ---------- 5) 開けない動画の案内 ----------
  console.log('\n--- 開けない動画（HEVC相当） ---');

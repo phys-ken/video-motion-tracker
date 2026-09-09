@@ -18,7 +18,7 @@
     <meta name="twitter:card" content="summary">
     <!-- アイコンフォントは同梱(学校MDMフィルタ対策)。本文は端末ネイティブ書体(CDN依存なし) -->
     <link rel="stylesheet" href="vendor/material-icons-round.css">
-    <link rel="stylesheet" href="styles.css?v=2026-09-05a">
+    <link rel="stylesheet" href="styles.css?v=2026-09-09a">
 </head>
 <body>
     <div class="app-container">
@@ -471,51 +471,58 @@
                 <span class="material-icons-round">close</span>
             </button>
             <h3>実験結果を保存</h3>
-            <div class="dialog-body">
-                <div class="submit-row">
-                    <span class="submit-row-label">表示</span>
-                    <label><input type="radio" name="strobe-mode" value="dots" checked>点マーカー</label>
-                    <label><input type="radio" name="strobe-mode" value="photo">写真（残像）</label>
-                    <label class="submit-row-end"><input type="checkbox" id="strobe-report" checked>グラフを付ける</label>
+            <!-- 横向きの iPad では画面が横に広く縦が短い。1列のままだと行の左右が
+                 大きく離れて、ラベルとボタンの対応が読み取りにくくなるので、
+                 広いときは左に画像・右に操作を置く2列にする。 -->
+            <div class="dialog-body submit-body">
+                <div class="submit-view">
+                    <canvas id="strobe-preview" class="submit-preview"></canvas>
+                    <img id="strobe-final" class="submit-preview" alt="提出用の画像" hidden>
                 </div>
 
-                <canvas id="strobe-preview" class="submit-preview"></canvas>
-                <img id="strobe-final" class="submit-preview" alt="提出用の画像" hidden>
+                <div class="submit-ctrl">
+                    <div class="submit-row">
+                        <span class="submit-row-label">表示</span>
+                        <label><input type="radio" name="strobe-mode" value="dots" checked>点マーカー</label>
+                        <label><input type="radio" name="strobe-mode" value="photo">写真（残像）</label>
+                        <label><input type="checkbox" id="strobe-report" checked>グラフを付ける</label>
+                    </div>
 
-                <div class="submit-sliders">
-                    <label>間引き（Nコマおき）: <span id="strobe-n-val">1</span>
-                        <input type="range" id="strobe-n" min="1" max="10" value="1">
-                    </label>
-                    <label><span id="strobe-r-label">点の大きさ</span>: <span id="strobe-r-val">60</span>
-                        <input type="range" id="strobe-r" min="10" max="200" value="60">
-                    </label>
-                </div>
+                    <div class="submit-sliders">
+                        <label>間引き（Nコマおき）: <span id="strobe-n-val">1</span>
+                            <input type="range" id="strobe-n" min="1" max="10" value="1">
+                        </label>
+                        <label><span id="strobe-r-label">点の大きさ</span>: <span id="strobe-r-val">60</span>
+                            <input type="range" id="strobe-r" min="10" max="200" value="60">
+                        </label>
+                    </div>
 
-                <!-- 傾き: vy–t だけが対象。区間を決めないと保存できない -->
-                <div class="submit-slope" id="submit-slope">
-                    <label class="submit-slope-check">
-                        <input type="checkbox" id="slope-show" checked>グラフに傾きを表示する
-                    </label>
-                    <button class="btn btn-small btn-secondary" id="btn-slope-range">
-                        <span class="material-icons-round">timeline</span>
-                        傾きの区間を決める
-                    </button>
-                    <span class="submit-slope-state" id="slope-state"></span>
-                </div>
+                    <!-- 傾きは vy–t だけが対象。区間はこの画面に来る前に選んである -->
+                    <div class="submit-slope" id="submit-slope">
+                        <label class="submit-slope-check">
+                            <input type="checkbox" id="slope-show" checked>グラフに傾きを表示する
+                        </label>
+                        <button class="btn btn-small btn-secondary" id="btn-slope-range">
+                            <span class="material-icons-round">timeline</span>
+                            区間を選び直す
+                        </button>
+                        <span class="submit-slope-state" id="slope-state"></span>
+                    </div>
 
-                <div class="submit-actions">
-                    <button class="btn btn-primary" id="btn-strobe-save">
-                        <span class="material-icons-round" id="save-icon">download</span>
-                        <span id="save-label">画像を保存</span>
-                    </button>
-                    <span id="strobe-status" class="submit-status"></span>
+                    <div class="submit-actions">
+                        <button class="btn btn-primary" id="btn-strobe-save">
+                            <span class="material-icons-round" id="save-icon">download</span>
+                            <span id="save-label">画像を保存</span>
+                        </button>
+                        <span id="strobe-status" class="submit-status"></span>
+                    </div>
+                    <p class="submit-note">
+                        画像には<b>照合コード</b>（打った点から作られる8桁）が印字され、PNGの中にも記録されます。
+                        同じ動画でも、タップした位置が違えばコードは必ず変わります。<br>
+                        <span id="strobe-longpress" hidden>うまく保存できないときは、左の画像を<b>長押し</b>して
+                        「写真に追加」でも保存できます。</span>
+                    </p>
                 </div>
-                <p class="submit-note">
-                    画像には<b>照合コード</b>（打った点から作られる8桁）が印字され、PNGの中にも記録されます。
-                    同じ動画でも、タップした位置が違えばコードは必ず変わります。<br>
-                    <span id="strobe-longpress" hidden>うまく保存できないときは、上の画像を<b>長押し</b>して
-                    「写真に追加」でも保存できます。</span>
-                </p>
             </div>
         </div>
     </div>
@@ -536,6 +543,6 @@
     <script src="vendor/xlsx.full.min.js"></script>
     <script src="vendor/mp4box.all.min.js"></script>
     <!-- ?v= はapp.js先頭のAPP_VERSIONと同じ文字列に手動で合わせる（styles.css の ?v= も同様。キャッシュ回避のヒント） -->
-    <script src="app.js?v=2026-09-05a"></script>
+    <script src="app.js?v=2026-09-09a"></script>
 </body>
 </html>

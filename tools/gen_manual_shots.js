@@ -286,10 +286,16 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         await ev(`appState.viewState.scale=1;appState.viewState.offsetX=0;appState.viewState.offsetY=0;window.drawVideoFrame();`);
         await shot('06_graph.png', ['#graph-stack'], 8);
 
-        // ⑥ 傾きの区間
+        // 保存ボタンの文言は端末で変わる（iPad は「共有・保存」、パソコンは「保存」）。
+        // 再読み込みで DevTools のタッチ擬似設定が外れてしまうので、ページ側で
+        // タッチ点数を申告し直す。UA は iPad と同じものに差し替えてあるので、
+        // これで iPad と同じ判定（isHandheldUA）になり、生徒が見る文言を写せる。
+        await ev(`Object.defineProperty(navigator, 'maxTouchPoints', { value: 5, configurable: true });
+                  if (window.updateGraph) window.updateGraph();`);
+
+        // ⑥ 傾きの区間（［実験結果を保存］を押すと、まずこの画面が出る）
         await ev(`document.getElementById('btn-submit').click(); await new Promise(r=>setTimeout(r,900));`);
-        await ev(`document.getElementById('btn-slope-range').click(); await new Promise(r=>setTimeout(r,700));
-            const cv=document.getElementById('ggd-canvas'); const r=cv.getBoundingClientRect();
+        await ev(`const cv=document.getElementById('ggd-canvas'); const r=cv.getBoundingClientRect();
             const send=(t,x)=>cv.dispatchEvent(new PointerEvent(t,{clientX:x,clientY:r.top+r.height/2,bubbles:true,pointerId:1}));
             send('pointerdown',r.left+r.width*0.2); send('pointermove',r.left+r.width*0.85); send('pointerup',r.left+r.width*0.85);
             await new Promise(r2=>setTimeout(r2,400));`);

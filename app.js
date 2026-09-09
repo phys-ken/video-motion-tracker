@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-05a';
+const APP_VERSION = '2026-09-09a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -3872,8 +3872,13 @@ const GRAPH_TYPE_LABELS = {
 };
 
 // opts.initialRange … 前に選んだ区間を復元する {a,b}
-// opts.onClose(range) … 閉じたときに選択区間（未選択なら null）を返す
+// opts.onClose(range, how) … 閉じたときに選択区間（未選択なら null）と、
+//                            どのボタンで閉じたか（'primary' / 'skip'）を返す
 // opts.hint … 下部の説明文を差し替える
+// opts.title … 見出しを差し替える
+// opts.primaryLabel … 主ボタンの文言（既定は「閉じる」）
+// opts.requireRange … 区間を選ぶまで主ボタンを押せなくする
+// opts.skipLabel … 「選ばずに進む」ボタンを出す（提出の流れで使う）
 function openGraphDialog(graphType, opts) {
     opts = opts || {};
     const overlay = document.getElementById('dialog-overlay');
@@ -3891,7 +3896,7 @@ function openGraphDialog(graphType, opts) {
     const kin = computeKinematics(data);
     const series = graphSeriesFor(graphType, kin, unit);
 
-    titleEl.textContent = `${GRAPH_TYPE_LABELS[graphType] || graphType} グラフ`;
+    titleEl.textContent = opts.title || `${GRAPH_TYPE_LABELS[graphType] || graphType} グラフ`;
     bodyEl.innerHTML = `
         <div class="graph-dialog-readout" id="ggd-readout"></div>
         <div class="graph-dialog-canvas-wrap"><canvas id="ggd-canvas"></canvas></div>
@@ -3902,8 +3907,16 @@ function openGraphDialog(graphType, opts) {
         </div>
     `;
     const okOriginal = btnOk.textContent;
-    btnOk.textContent = '閉じる';
-    btnCancel.style.display = 'none';
+    const cancelOriginal = btnCancel.textContent;
+    btnOk.textContent = opts.primaryLabel || '閉じる';
+    if (opts.skipLabel) {
+        btnCancel.textContent = opts.skipLabel;
+        btnCancel.style.display = '';
+        btnCancel.classList.add('btn-quiet');
+    } else {
+        btnCancel.style.display = 'none';
+    }
+    let closedBy = 'primary';
     // グラフを大きく見せるためダイアログを広げる（cleanupで戻す）
     const dialogEl = overlay.querySelector('.dialog');
     if (dialogEl) dialogEl.classList.add('dialog-wide');
@@ -3965,6 +3978,11 @@ function openGraphDialog(graphType, opts) {
             ctx.restore();
         }
 
+        if (opts.requireRange) {
+            const ready = !!selRange && xs.length >= 3;
+            btnOk.disabled = !ready;
+            btnOk.classList.toggle('is-blocked', !ready);
+        }
         const m = slopeMeaning(graphType, unit);
         if (readout) {
             readout.innerHTML = (slope === null)
@@ -4006,15 +4024,24 @@ function openGraphDialog(graphType, opts) {
     document.getElementById('ggd-clear').addEventListener('click', () => { selRange = null; redraw(); });
 
     const cleanup = () => {
-        if (opts.onClose) opts.onClose(selRange ? { a: Math.min(selRange.a, selRange.b), b: Math.max(selRange.a, selRange.b) } : null);
+        const range = selRange
+            ? { a: Math.min(selRange.a, selRange.b), b: Math.max(selRange.a, selRange.b) } : null;
         overlay.style.display = 'none';
         btnOk.textContent = okOriginal;
+        btnOk.disabled = false;
+        btnOk.classList.remove('is-blocked');
+        btnCancel.textContent = cancelOriginal;
         btnCancel.style.display = '';
+        btnCancel.classList.remove('btn-quiet');
         if (dialogEl) dialogEl.classList.remove('dialog-wide');
         const newOk = btnOk.cloneNode(true);
         btnOk.parentNode.replaceChild(newOk, btnOk);
+        const newCancel = btnCancel.cloneNode(true);
+        btnCancel.parentNode.replaceChild(newCancel, btnCancel);
+        if (opts.onClose) opts.onClose(range, closedBy);
     };
-    btnOk.addEventListener('click', cleanup);
+    btnOk.addEventListener('click', () => { closedBy = 'primary'; cleanup(); });
+    btnCancel.addEventListener('click', () => { closedBy = 'skip'; cleanup(); });
 
     // ダイアログ表示後にサイズが確定してから描く
     requestAnimationFrame(redraw);
@@ -4852,19 +4879,37 @@ function setupStrobe() {
         refresh();
     });
 
-    // 区間を決める画面は、グラフの全画面表示をそのまま使う（操作を覚え直さなくていい）
-    document.getElementById('btn-slope-range').addEventListener('click', () => {
+    // ① 傾きを測る区間を選ぶ画面。グラフの全画面表示をそのまま使うので、
+    //    操作（横にドラッグ）を覚え直さなくてよい。
+    //    授業で「区間を決めないまま画像を出す」ことが起きたため、保存画面へ入る前に
+    //    必ずこの画面を通す。区間を選ばずに進む道は残すが、自分で選ばせる。
+    const openSlopeStep = (onDone) => {
         openGraphDialog('vy-t', {
+            title: '① 傾きを測る区間を選ぶ',
             initialRange: appState.slopeRange,
-            hint: '傾きを測る区間を、グラフ上で横にドラッグして選んでください（タップで解除）',
-            onClose: (range) => {
-                appState.slopeRange = range;
-                logDebug(range
-                    ? `傾きの区間: ${range.a.toFixed(3)}–${range.b.toFixed(3)} 秒`
-                    : '傾きの区間: 未設定');
-                refresh();
+            hint: 'グラフの上を<b>横にドラッグ</b>して、まっすぐな部分を選んでください（タップで解除）',
+            requireRange: true,
+            primaryLabel: '次へ（画像を作る）',
+            skipLabel: '傾きなしで進む',
+            onClose: (range, how) => {
+                if (how === 'skip') {
+                    appState.showSlope = false;
+                    appState.slopeRange = null;
+                    logDebug('傾きの区間: 選ばずに進む（傾きは画像に出さない）');
+                } else {
+                    appState.showSlope = true;
+                    appState.slopeRange = range;
+                    logDebug(`傾きの区間: ${range.a.toFixed(3)}–${range.b.toFixed(3)} 秒`);
+                }
+                if (onDone) onDone();
             }
         });
+    };
+
+    // 保存画面からは「選び直す」で同じ画面へ戻れる
+    document.getElementById('btn-slope-range').addEventListener('click', () => {
+        overlay.style.display = 'none';
+        openSlopeStep(() => { overlay.style.display = 'flex'; refresh(); });
     });
 
     // [保存] のタップは同期で完結させる（iOS Safari の保存はここが命）
@@ -4890,6 +4935,8 @@ function setupStrobe() {
     document.getElementById('submit-close').addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
+    const openPanel = () => { overlay.style.display = 'flex'; refresh(); };
+
     btn.addEventListener('click', () => {
         if (strobePoints(1).length < 2) {
             showInputDialog('実験結果を保存',
@@ -4897,8 +4944,11 @@ function setupStrobe() {
                 '', () => {});
             return;
         }
-        overlay.style.display = 'flex';
-        refresh();
+        // 傾きが測れる点数があるときは、まず区間を選ばせてから保存画面へ進む
+        const enough = appState.trackingData
+            .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame)).length >= 5;
+        if (enough) openSlopeStep(openPanel);
+        else openPanel();
     });
 }
 
