@@ -89,6 +89,7 @@ npm run test:ipad     # iPadのUA・タッチ・回転で通しで検証（縦�
 npm run test:teacher  # 教員用の照合ページが重複を見つけられるかを検証
 npm run test:trim     # 「使う範囲を決める」画面（表示の一貫性・帯・44px・コマ落ち）
 npm run test:manual   # 使い方ページ（画像の欠け・alt・横スクロール・印刷）
+npm run test:pointer  # マウス/トラックパッド（スクロール・ピンチ・ドラッグの取りこぼし）
 npm run shots         # 使い方ページの画面写真と配布用PDFを作り直す（UIを変えたら実行）
 npm run test:all      # 上記すべて
 ```

@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-09a';
+const APP_VERSION = '2026-09-11a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -2309,12 +2309,44 @@ function setupCanvasTouch() {
     appState.canvas.addEventListener('pointerup', handlePointerUp);
     appState.canvas.addEventListener('pointercancel', handlePointerUp);
     appState.canvas.addEventListener('wheel', handleWheel, { passive: false });
+    // Canvas の外（ウィンドウの端、別の要素の上）で離した場合、Canvas には
+    // pointerup が届かない。ここで拾わないと、押しっぱなし扱いのまま残る。
+    window.addEventListener('pointerup', (e) => {
+        if (!activePointers.some(p => p.id === e.pointerId)) return;
+        handlePointerUp(e);
+    });
+    window.addEventListener('pointercancel', (e) => {
+        if (!activePointers.some(p => p.id === e.pointerId)) return;
+        handlePointerUp(e);
+    });
+    // 映像の上で右クリックしてもメニューを出さない（ポインタの流れが途切れるため）
+    appState.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
+
+// 押しているポインタの記録を全部捨てて、パン／ピンチの途中状態も戻す。
+// 「離した」を取りこぼしたときの復帰に使う。
+function releaseAllPointers() {
+    activePointers = [];
+    lastPointerPos = null;
+    lastPinchDist = 0;
+    lastPinchCenter = null;
+    isPanning = false;
+    panStartedAt = 0;
+    if (isDraggingPoint) { isDraggingPoint = false; draggedPointIndex = -1; }
+}
+
+let panStartedAt = 0;          // パンを始めた時刻。長すぎるドラッグの案内に使う
+let panHintShown = false;
 
 function handlePointerDown(e) {
     e.preventDefault();
-    appState.canvas.setPointerCapture(e.pointerId);
-    
+    // 捕捉できなくても操作は続けられるようにする。未捕捉のポインタを渡すと
+    // NotFoundError を投げる仕様なので、ここで止まると以降が全部動かなくなる。
+    try { appState.canvas.setPointerCapture(e.pointerId); } catch (err) { /* 捕捉なしで続行 */ }
+
+    // 同じポインタを二重に積まない。「離した」を取りこぼしたあとにもう一度押すと、
+    // 1つのマウスが2本指と誤認されて映像が動かなくなっていた。
+    activePointers = activePointers.filter(p => p.id !== e.pointerId);
     activePointers.push({
         id: e.pointerId,
         x: e.clientX,
@@ -2329,6 +2361,8 @@ function handlePointerDown(e) {
         // 1本指は常に映像のパン（点打ちは「確定」ボタンに集約）
         lastPointerPos = { x: localX, y: localY };
         isPanning = false;
+        panStartedAt = Date.now();
+        panHintShown = false;
     } else if (activePointers.length === 2) {
         const p1 = activePointers[0];
         const p2 = activePointers[1];
@@ -2347,6 +2381,13 @@ function handlePointerDown(e) {
 }
 
 function handlePointerMove(e) {
+    // マウスやペンで、ボタンを押していないのに動いている＝「離した」を取りこぼした状態。
+    // そのままだと、押していないのに映像がカーソルに付いてくる。ここで元に戻す。
+    const buttonKind = (e.pointerType === 'mouse' || e.pointerType === 'pen');
+    if (buttonKind && e.buttons === 0 && activePointers.length) {
+        releaseAllPointers();
+        return;
+    }
     e.preventDefault();
     const pointer = activePointers.find(p => p.id === e.pointerId);
     if (!pointer) return;
@@ -2367,6 +2408,14 @@ function handlePointerMove(e) {
             appState.viewState.offsetY += dy;
             lastPointerPos = { x: localX, y: localY };
             drawVideoFrame();
+            // macOS の「3本指のドラッグ」やドラッグロックを使っていると、指を離しても
+            // OSがボタンを押したままにする。アプリからは解除できないので、
+            // 直し方（一度クリックする）を伝える。
+            if (!panHintShown && e.pointerType === 'mouse'
+                && panStartedAt && Date.now() - panStartedAt > 4000) {
+                panHintShown = true;
+                showStepBadge('一度クリックすると解除できます', true);
+            }
         }
     } else if (activePointers.length === 2 && isPanning) {
         const p1 = activePointers[0];
@@ -2403,8 +2452,11 @@ function handlePointerMove(e) {
 }
 
 function handlePointerUp(e) {
-    appState.canvas.releasePointerCapture(e.pointerId);
+    // 捕捉していないポインタを渡すと NotFoundError を投げる。囲っておかないと、
+    // この下の後始末が丸ごと飛び、押していないのに映像が追従する状態が残る。
+    try { appState.canvas.releasePointerCapture(e.pointerId); } catch (err) { /* 未捕捉 */ }
     activePointers = activePointers.filter(p => p.id !== e.pointerId);
+    if (panHintShown) { panHintShown = false; showStepBadge(null); }
     
     if (activePointers.length < 2) {
         isPanning = false;
@@ -2418,6 +2470,7 @@ function handlePointerUp(e) {
         lastPointerPos = { x: p.x - rect.left, y: p.y - rect.top };
     } else if (activePointers.length === 0) {
         lastPointerPos = null;
+        panStartedAt = 0;
         if (isDraggingPoint) {
             isDraggingPoint = false;
             draggedPointIndex = -1;
@@ -2426,26 +2479,42 @@ function handlePointerUp(e) {
     }
 }
 
+// マウスのホイール1ノッチの目安。これ未満の細かい値は、トラックパッドの
+// 2本指スクロール（慣性つきで大量に届く）とみなす。
+const WHEEL_NOTCH_MIN = 50;
+const WHEEL_ZOOM_PER_NOTCH = 0.15;   // 1ノッチあたりの拡大率の指数
+const WHEEL_ZOOM_PER_PINCH = 0.010;  // ピンチは小さい値が多数届くので1件あたりは小さく
+const WHEEL_ZOOM_MAX_STEP = 1.25;    // 1イベントで跳ねすぎないように上限を設ける
+
 function handleWheel(e) {
+    // トラックパッドの2本指スクロールは「ページを送りたい」操作であって、
+    // 映像を拡大したいわけではない。以前はスクロール量を見ずに1イベントごとに
+    // 一定率で拡大していたため、軽く1回払っただけで倍率が下限まで振り切れ、
+    // 映像がカーソルへ吸い寄せられていた（MacBook で「点が打てない」の原因）。
+    const pinch = e.ctrlKey;                    // トラックパッドのピンチはこれで届く
+    const notch = e.deltaMode !== 0 || Math.abs(e.deltaY) >= WHEEL_NOTCH_MIN;
+    if (!pinch && !notch) return;               // 細かいスクロールはページに任せる
+
     e.preventDefault();
-    const zoomIntensity = 0.08;
     const rect = appState.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    
-    const wheel = e.deltaY < 0 ? 1 : -1;
-    const zoomFactor = Math.exp(wheel * zoomIntensity);
-    
+
+    // 拡大率はスクロール量に比例させる（一定率だと、量の多い入力で暴れる）
+    const unit = pinch ? WHEEL_ZOOM_PER_PINCH
+                       : WHEEL_ZOOM_PER_NOTCH / (e.deltaMode !== 0 ? 3 : 120);
+    let zoomFactor = Math.exp(-e.deltaY * unit);
+    zoomFactor = Math.max(1 / WHEEL_ZOOM_MAX_STEP, Math.min(WHEEL_ZOOM_MAX_STEP, zoomFactor));
+
     const oldScale = appState.viewState.scale;
     let newScale = oldScale * zoomFactor;
     newScale = Math.max(0.5, Math.min(10, newScale));
-    
+
     const actualRatio = newScale / oldScale;
-    
     appState.viewState.offsetX = mouseX - (mouseX - appState.viewState.offsetX) * actualRatio;
     appState.viewState.offsetY = mouseY - (mouseY - appState.viewState.offsetY) * actualRatio;
     appState.viewState.scale = newScale;
-    
+
     drawVideoFrame();
 }
 
@@ -4012,18 +4081,32 @@ function openGraphDialog(graphType, opts) {
         redraw();
     });
     cv.addEventListener('pointermove', (e) => {
+        // ボタンを押していないのに動いている＝「離した」を取りこぼした状態。
+        // そのままだと選択範囲がカーソルに付いてくる（映像のパンと同じ弱点）。
+        if ((e.pointerType === 'mouse' || e.pointerType === 'pen') && e.buttons === 0) {
+            dragging = false; return;
+        }
         if (!dragging || !selRange) return;
         selRange.b = dataXOf(e);
         redraw();
     });
-    cv.addEventListener('pointerup', (e) => {
+    const endDrag = (e) => {
+        if (!dragging) return;
         dragging = false;
         if (Math.abs(e.clientX - dragStartX) < 6) { selRange = null; } // タップ＝解除
         redraw();
-    });
+    };
+    cv.addEventListener('pointerup', endDrag);
+    cv.addEventListener('pointercancel', endDrag);
+    // グラフの外で離した場合もここで拾う（ダイアログを閉じるときに外す）
+    const onWindowUp = (e) => endDrag(e);
+    window.addEventListener('pointerup', onWindowUp);
+    window.addEventListener('pointercancel', onWindowUp);
     document.getElementById('ggd-clear').addEventListener('click', () => { selRange = null; redraw(); });
 
     const cleanup = () => {
+        window.removeEventListener('pointerup', onWindowUp);
+        window.removeEventListener('pointercancel', onWindowUp);
         const range = selRange
             ? { a: Math.min(selRange.a, selRange.b), b: Math.max(selRange.a, selRange.b) } : null;
         overlay.style.display = 'none';
