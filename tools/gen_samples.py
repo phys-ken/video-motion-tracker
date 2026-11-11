@@ -196,7 +196,7 @@ def new_frame(w, h, i=None):
     return f
 
 
-RULER = (150, 205, 232)    # BGR: 1 m ものさしの木の色（青を残し、球のアンバー検出と重ならない）
+RULER = (172, 212, 234)    # BGR: 1 m ものさしの木の色（青を残し、目盛りと混ざっても球の色に入らない）
 
 
 def draw_ruler(f, x, y_bottom, px_per_m):
@@ -241,40 +241,170 @@ def ball(f, x, y, r, color):
     cv2.circle(f, c, int(r * s), color, -1, cv2.LINE_AA, SHIFT)
 
 
-SKIN = (160, 192, 234)     # BGR: 手（青を多めに残し、球のアンバー検出に入らない）
-SKIN_EDGE = (110, 138, 178)
-SLEEVE = (112, 92, 70)     # BGR: 制服の袖（紺）
+# --- 球を上から持つ手 ----------------------------------------------------------
+# 描き方（フラットイラストの定石に合わせた）:
+#   ・手を「手の甲（丸いくさび形）＋関節で折れる指（先が細い管）＋太く短い親指」に分ける
+#   ・握っているときは、指の各節を球の輪郭に沿って並べる（球に巻きつく）。
+#     放すときは、各節の向きを「外へ開いて先が少し下がる」向きへ最短回りで補間する
+#   ・手全体を1本の輪郭線で囲む（部品ごとに縁取ると指の付け根に継ぎ目が出る）
+#   ・奥の指（中指・薬指）は少し暗くして球の後ろに、親指と人さし指は球の手前に描く
+#   ・4倍の大きさで描いてから縮める（細い指でも縁がなめらかになる）
+# 色は青を多めに残し、球のアンバー検出（R>190, G>120, B<110）に入らないようにしてある。
+SKIN = (166, 190, 238)     # BGR: 肌
+SKIN_SH = (140, 160, 212)  # 奥の指（影）
+SKIN_EDGE = (110, 104, 140)  # 輪郭・しわ（肌と混ざった縁の画素も球の色に入らない色み）
+NAIL = (200, 216, 248)
+SLEEVE = (112, 92, 70)     # 制服の袖（紺）
+SLEEVE_EDGE = (70, 56, 42)
+CUFF = (238, 238, 238)     # 袖口から少し見えるシャツ
+HAND_SS = 4                # 何倍で描いてから縮めるか
 
 
-def draw_hand(f, bx, by, open_amt, lift):
-    """上から球をつまんで持つ手。open_amt=0 で握り、1 で指が開ききる。
-    lift は放したあとに手が上へ引く量（px）。
+def _ang_lerp(a, b, t):
+    """角度を最短回りで補間する（そのままだと親指が大きく一回りしてしまう）。"""
+    d = (b - a + math.pi) % (2 * math.pi) - math.pi
+    return a + d * t
 
-    手のひらは球の上端より上に描くので、指が開けば球には一切かからない
-    （落下中のコマで球の見え方＝真値に影響しない）。
+
+def _smooth(pts, n=8, it=3):
+    P = np.array(pts, float)
+    seg = [P[i] * (1 - t) + P[i + 1] * t
+           for i in range(len(P) - 1) for t in np.linspace(0, 1, n, endpoint=False)]
+    seg = np.array(seg + [P[-1]])
+    for _ in range(it):                                   # 関節の角を丸める
+        seg[1:-1] = (seg[:-2] + seg[1:-1] * 2 + seg[2:]) / 4
+    return seg
+
+
+def _tube(pts, w0, w1):
+    """関節の点列を、太さ w0 → w1 に細る、両端の丸い指の輪郭にする。"""
+    seg = _smooth(pts)
+    m = len(seg)
+    left, right = [], []
+    for i in range(m):
+        d = seg[min(i + 1, m - 1)] - seg[max(i - 1, 0)]
+        d /= np.linalg.norm(d) + 1e-9
+        nrm = np.array([-d[1], d[0]])
+        w = (w0 + (w1 - w0) * i / (m - 1)) / 2
+        left.append(seg[i] + nrm * w)
+        right.append(seg[i] - nrm * w)
+
+    def cap(c, d, w, a1, a2):
+        a0 = math.atan2(d[1], d[0])
+        return [c + w / 2 * np.array([math.cos(a0 + a), math.sin(a0 + a)])
+                for a in np.linspace(a1, a2, 11)]
+    dt = seg[-1] - seg[-2]
+    dr = seg[1] - seg[0]
+    tip = cap(seg[-1], dt / np.linalg.norm(dt), w1, math.pi / 2, -math.pi / 2)
+    root = cap(seg[0], dr / np.linalg.norm(dr), w0, -math.pi / 2, -3 * math.pi / 2)
+    return np.array(left + tip + right[::-1] + root)
+
+
+def _walk(base, dirs, lens):
+    pts = [np.array(base, float)]
+    for th, ln in zip(dirs, lens):
+        pts.append(pts[-1] + ln * np.array([math.cos(th), math.sin(th)]))
+    return pts
+
+
+def _finger(bx, y, yh, R, a_s, lens, sign, open_dirs, open_base, o):
+    """球（中心 bx, y・半径 R の円）に巻きつく指。a_s は付け根の円周上の角度。
+    sign=+1 は右側の指（時計回りに巻く）、-1 は左側（親指）。"""
+    dirs, a = [], a_s
+    for ln in lens:
+        da = sign * ln / R
+        dirs.append(a + da / 2 + sign * math.pi / 2)
+        a += da
+    dirs = [_ang_lerp(c, q, o) for c, q in zip(dirs, open_dirs)]
+    b0 = (bx + R * math.cos(a_s), y + R * math.sin(a_s))
+    base = (b0[0] + (open_base[0] - b0[0]) * o, b0[1] + (open_base[1] + yh - y - b0[1]) * o)
+    return _walk(base, dirs, lens)
+
+
+def _hand_layers(bx, by, open_amt, lift, w, h, r=14):
+    """手を4倍の大きさで描いた2枚の層（球の奥・球の手前）を返す。座標は画面と同じ。"""
+    S = HAND_SS
+    o = open_amt
+    y0 = by - lift
+    yh = y0 - 5 * o                                       # 開きながら手のひらを少し上げる
+    R = r + 4.6                                           # 指の中心線が通る円（球の縁＋指の半分）
+    D = math.radians
+    P = lambda q: (np.asarray(q) * S).astype(np.int32)
+
+    def draw(img, shapes):
+        for poly, _ in shapes:                            # 輪郭を先に全部 → 塗りを全部
+            cv2.polylines(img, [P(poly)], True, SKIN_EDGE, int(1.3 * 2 * S), cv2.LINE_AA)
+        for poly, col in shapes:
+            cv2.fillPoly(img, [P(poly)], col, cv2.LINE_AA)
+
+    back = np.zeros((h * S, w * S, 3), np.uint8)
+    front = np.zeros_like(back)
+
+    # 奥の指（中指・薬指）
+    shapes = []
+    for da, sc in ((D(8), 0.97), (D(16), 0.88)):
+        pts = _finger(bx, y0, yh, R + 1, D(-62) + da, [14 * sc, 10 * sc, 8 * sc], +1,
+                      [D(-2) + da, D(30) + da, D(58) + da], (bx + 12, y0 - 22), o)
+        shapes.append((_tube(pts, 8.5, 7), SKIN_SH))
+    draw(back, shapes)
+
+    # 前腕（手首で細く、袖口で太い）・手の甲・親指・人さし指
+    arm = np.array([(bx - 9, yh - 26), (bx + 16, yh - 36), (bx + 70, yh - 118), (bx + 32, yh - 114)], float)
+    palm = _smooth([(bx - 17, yh - 20), (bx - 14, yh - 33), (bx + 2, yh - 40), (bx + 18, yh - 34),
+                    (bx + 21, yh - 22), (bx + 8, yh - 15), (bx - 8, yh - 14), (bx - 17, yh - 20)], n=6, it=4)
+    thumb = _finger(bx, y0, yh, R + 0.5, D(-128), [13, 11], -1, [D(185), D(148)], (bx - 14, y0 - 22), o)
+    index = _finger(bx, y0, yh, R, D(-58), [15, 10.5, 8.5], +1, [D(-5), D(28), D(55)], (bx + 13, y0 - 21), o)
+    draw(front, [(arm, SKIN), (palm, SKIN), (_tube(thumb, 10.5, 8.5), SKIN), (_tube(index, 9.5, 7.5), SKIN)])
+
+    # 袖（肌の輪郭の上に重ねる）と、袖口のシャツ
+    sleeve = np.array([(bx + 24, yh - 100), (bx + 70, yh - 114), (bx + 112, yh - 210), (bx + 52, yh - 210)], float)
+    cv2.fillPoly(front, [P(sleeve)], SLEEVE_EDGE, cv2.LINE_AA)
+    cv2.fillPoly(front, [P(sleeve + [[1.3, 1.3], [-1.3, 1.3], [-1.3, 0], [1.3, 0]])], SLEEVE, cv2.LINE_AA)
+    cv2.line(front, tuple(P(sleeve[0])), tuple(P(sleeve[1])), CUFF, int(2.6 * S), cv2.LINE_AA)
+
+    # 関節のしわと爪
+    for pts, wd, side in ((index, 8.5, 1), (thumb, 9.5, -1)):
+        for j in range(1, len(pts) - 1):
+            d = pts[j + 1] - pts[j - 1]
+            d /= np.linalg.norm(d)
+            nrm = np.array([-d[1], d[0]]) * side
+            cv2.line(front, tuple(P(pts[j] + nrm * wd * 0.12)), tuple(P(pts[j] + nrm * wd * 0.48)),
+                     SKIN_EDGE, int(0.9 * S), cv2.LINE_AA)
+        d = pts[-1] - pts[-2]
+        d /= np.linalg.norm(d)
+        c = pts[-1] - d * 1.2 - np.array([-d[1], d[0]]) * side * wd * 0.22
+        cv2.ellipse(front, tuple(P(c)), (int(3.2 * S), int(2.0 * S)),
+                    math.degrees(math.atan2(d[1], d[0])), 0, 360, NAIL, -1, cv2.LINE_AA)
+    cv2.ellipse(front, tuple(P((bx + 14, yh - 30))), (3 * S, 2 * S), -30, 200, 330,
+                SKIN_EDGE, int(0.9 * S), cv2.LINE_AA)     # 人さし指の付け根のこぶ
+    return back, front
+
+
+def _paste(f, layer):
+    """4倍で描いた層を縮めて、塗った部分だけを画面に重ねる（縁は半透明でなじませる）。"""
+    h, w = f.shape[:2]
+    small = cv2.resize(layer, (w, h), interpolation=cv2.INTER_AREA).astype(np.float32)
+    a = cv2.resize(layer.any(axis=2).astype(np.uint8) * 255, (w, h),
+                   interpolation=cv2.INTER_AREA).astype(np.float32)[..., None] / 255
+    small /= np.maximum(a, 1e-3)
+    f[:] = np.clip(f * (1 - a) + small * a, 0, 255).astype(np.uint8)
+
+
+def draw_hand(f, bx, by, open_amt, lift, draw_ball):
+    """上から球を持つ手と、その球を描く。open_amt=0 で握り、1 で指が開ききる。
+    lift は放したあとに手が上へ引く量（px）。draw_ball(f) は球を描く関数で、
+    奥の指 → 球 → 手前の指 の順に重ねるために受け取る。
+
+    指が開ききると（open_amt=1）手は球の上端より上に離れるので、
+    放したあとのコマでは球に一切かからない（真値の区間の見え方に影響しない）。
     """
-    s = 1 << SHIFT
-    py = by - 38 - lift                                   # 手のひらの中心
-    # 袖と腕: 画面の上端から手のひらへ（右上から斜めに入る）
-    arm = np.array([[bx + 4, py - 6], [bx + 30, py - 14],
-                    [bx + 92, -10], [bx + 50, -10]], np.int32)
-    cv2.fillPoly(f, [arm], SKIN, cv2.LINE_AA)
-    cuff = np.array([[bx + 40, py - 52], [bx + 70, py - 60],
-                     [bx + 100, -10], [bx + 60, -10]], np.int32)
-    cv2.fillPoly(f, [cuff], SLEEVE, cv2.LINE_AA)
-    # 指（親指と人さし指・中指）。付け根を中心に外へ開く
-    ang = math.radians(58) * open_amt
-    for side, base_dx, ln in ((-1, -15, 34), (1, 15, 36), (1, 7, 32)):
-        bxx, byy = bx + base_dx, py + 8
-        a = side * ang
-        tip = (bxx + side * 4 + math.sin(a) * ln, byy + math.cos(a) * ln)
-        for col, th in ((SKIN_EDGE, 12), (SKIN, 9)):
-            cv2.line(f, (int(bxx * s), int(byy * s)), (int(tip[0] * s), int(tip[1] * s)),
-                     col, th, cv2.LINE_AA, SHIFT)
-    cv2.ellipse(f, (int(bx * s), int(py * s)), (25 * s, 17 * s), 0, 0, 360,
-                SKIN_EDGE, -1, cv2.LINE_AA, SHIFT)
-    cv2.ellipse(f, (int(bx * s), int(py * s)), (23 * s, 15 * s), 0, 0, 360,
-                SKIN, -1, cv2.LINE_AA, SHIFT)
+    h, w = f.shape[:2]
+    top = max(0, int(by - 260))                           # 手の描画は画面上部だけで足りる
+    sub = f[top:int(by + 60)]
+    back, front = _hand_layers(bx, by - top, open_amt, lift, w, sub.shape[0])
+    _paste(sub, back)
+    draw_ball(f)
+    _paste(sub, front)
 
 
 def encode(name, frames, w, h):
@@ -360,8 +490,7 @@ def gen_free_fall():
             open_amt = 1.0
             u = min(1.0, (k - FF_LEAD) / 14)          # 手は少し上へ引く
             lift = 16 * (1 - (1 - u) ** 2)
-        ball(f, BX, y, 14, AMBER)
-        draw_hand(f, BX, FF_Y0, open_amt, lift)
+        draw_hand(f, BX, FF_Y0, open_amt, lift, lambda g: ball(g, BX, y, 14, AMBER))
         frames.append(f)
     encode("free_fall.mp4", frames, W, H)
     print(f"    真値の区間: コマ {first}〜{last}（{last - first + 1}コマ、0始まり）")
