@@ -11,6 +11,10 @@ const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'manual', 'img');
 const CHROME = process.env.CHROME_BIN || 'google-chrome';
+// 自由落下サンプルの寸法（tools/gen_samples.py と合わせる。あちらが一次情報源）
+const FF_FIRST = 45, FF_LAST = 78;           // 手を放したコマ／床に着く直前のコマ
+const FF_Y0 = 120;                           // 放す位置（球の中心）
+const RULER_X = 395, RULER_BOTTOM = 918, RULER_TOP = 418;   // 1 m ものさしの中心線と両端
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
     '.mp4': 'video/mp4', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -217,9 +221,10 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         await sleep(700);
 
         // ③ 使う範囲を決める
-        await ev(`window.seekToFrame(24); await new Promise(r=>setTimeout(r,500));
+        // 手を放したコマ（45）から、床に着く直前のコマ（78）まで（gen_samples.py の free_fall_frames）
+        await ev(`window.seekToFrame(${FF_FIRST}); await new Promise(r=>setTimeout(r,500));
                   document.getElementById('trim-set-in').click(); await new Promise(r=>setTimeout(r,200));
-                  window.seekToFrame(58); await new Promise(r=>setTimeout(r,500));
+                  window.seekToFrame(${FF_LAST}); await new Promise(r=>setTimeout(r,500));
                   document.getElementById('trim-set-out').click(); await new Promise(r=>setTimeout(r,300));`);
         await markOn(['#trim-set-in', '#trim-set-out']);
         await shot('03b_trim_controls.png', ['.trim-slider', '.trim-frame', '.trim-jog', '.trim-set-row', '.trim-range'], 20);
@@ -228,20 +233,20 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         for (let i = 0; i < 60; i++) { if (!(await ev(`return appState.isScanning;`))) break; await sleep(500); }
         await sleep(800);
 
-        // ④ スケールを決める（ものさしの左端 → 右端）。指で拡大した状態で撮る。
+        // ④ スケールを決める（縦に立てたものさしの下の端 → 上の端）。指で拡大した状態で撮る。
         await ev(`appState.viewState.scale = 2.6; await new Promise(r=>setTimeout(r,100));`);
-        await centerOn(20, 930);          // ものさしの左端に十字を合わせた状態
+        await centerOn(RULER_X, RULER_BOTTOM);   // ものさしの下の端に十字を合わせた状態
         await markCrosshair(70);
-        await shotAroundCrosshair('04b_scale_start.png', -80, -150, 380, 210);
+        await shotAroundCrosshair('04b_scale_start.png', -190, -150, 380, 210);
         await markOff();
         await ev(`window.confirmAtCrosshair(); await new Promise(r=>setTimeout(r,400));`);
-        await centerOn(520, 930);         // 右端へ動かすと両矢印が付いてくる
+        await centerOn(RULER_X, RULER_TOP);      // 上の端へ動かすと両矢印が付いてくる
         await markCrosshair(70);
-        await shotAroundCrosshair('04d_scale_arrow.png', -300, -150, 380, 210);
+        await shotAroundCrosshair('04d_scale_arrow.png', -190, -60, 380, 210);
         await markOff();
         await ev(`
             const s=appState;
-            s.calibration.scaleStart={x:20,y:930}; s.calibration.scaleEnd={x:520,y:930};
+            s.calibration.scaleStart={x:${RULER_X},y:${RULER_BOTTOM}}; s.calibration.scaleEnd={x:${RULER_X},y:${RULER_TOP}};
             s.calibration.scaleActual=100; s.calibration.scaleRatio=0.2; s.scaleSkipped=false;
             document.getElementById('info-scale').textContent='0.200 cm/px';
             window.setPendingCapture(null); window.updateScaleBanner(); window.updateStepGuide();
@@ -250,9 +255,9 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
             await new Promise(r=>setTimeout(r,300));`);
 
         // ⑤ 点を打つ（球に十字を合わせた状態）
-        const shotFrame = 45;                       // 落ち始めから 0.35 秒後あたり
-        const tBall = (shotFrame - 24) / 60;
-        const yBall = 80 + 0.5 * 9.8 * tBall * tBall * 500;   // gen_samples.py と同じ式
+        const shotFrame = FF_FIRST + 21;            // 落ち始めから 0.35 秒後あたり
+        const tBall = (shotFrame - FF_FIRST) / 60;
+        const yBall = FF_Y0 + 0.5 * 9.8 * tBall * tBall * 500;   // gen_samples.py と同じ式
         await ev(`window.seekToFrame(${shotFrame}); await new Promise(r=>setTimeout(r,500));`);
         await centerOn(270, Math.round(yBall));
         await markCrosshair(92);

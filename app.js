@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-11-11a';
+const APP_VERSION = '2026-11-11b';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -586,7 +586,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // サーバ上の動画を直接 Blob 化して読み込む。
 // samples/ は tools/gen_samples.py で生成した真値既知の合成動画（詳細は MANUAL.md）。
 const SAMPLE_LIST = [
-    { file: 'samples/free_fall.mp4',           name: '自由落下',       hint: 'v0=0・約1.6m落下' },
+    { file: 'samples/free_fall.mp4',           name: '自由落下',       hint: '手を放して落とす・使う範囲の練習に' },
     { file: 'samples/vertical_throw.mp4',      name: '鉛直投げ上げ',   hint: '上がって戻ってくる' },
     { file: 'samples/projectile.mp4',          name: '水平投射',       hint: '水平に投げ出した球' },
     { file: 'samples/oblique_throw.mp4',       name: '斜方投射',       hint: '斜め45°に打ち上げ' }
@@ -608,7 +608,7 @@ function showSampleDialog() {
          </button>`).join('');
     const body = `
         <p style="margin-bottom:8px; font-size:0.8rem; color:#52606D;">
-            どの動画にも画面下に「1 m」のスケールバーがあります。まずそのバーで
+            どの動画にも、長さ1 mのものさしが縦に立ててあります。まずその上下の端で
             スケール設定してから測ってください。
         </p>
         <div>${items}</div>`;

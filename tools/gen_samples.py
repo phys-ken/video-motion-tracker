@@ -2,7 +2,7 @@
 """物理サンプル動画ジェネレータ（samples/*.mp4 を再生成する）
 
 真値が既知の合成動画を作る。生徒が校正〜トラッキング〜グラフまで練習できるよう、
-各動画に「1 m」のスケールバーを描く（方眼は描かない＝目分量で答えが見えないように）。
+各動画に、縦に立てた「1 m」のものさしを描く（実験でよくある置き方。方眼は描かない）。
 エンコードは Safari/iPad 互換の H.264 / yuv420p / faststart / 60fps CFR。
 
 使い方:  python tools/gen_samples.py
@@ -96,21 +96,64 @@ HAND = (58, 52, 46)        # 時計の針
 CLOUD = (238, 232, 222)    # 窓の外の雲
 
 
-def draw_motion_props(f, i):
-    """毎コマ必ず絵が変わるように、教室の「動くもの」を描く。
+LED = (70, 70, 245)        # ストップウォッチの数字（赤いLED。球のアンバーとは色で分かれる）
+LED_OFF = (42, 40, 48)     # 消えている区画（ごくうっすら見える）
+PANEL = (34, 32, 30)       # ストップウォッチの盤面
 
-    これが無いと、静止している前後のコマがエンコーダの複製フレームと見分けが
-    つかず、アプリの複製除外（changedFraction < 0.08%）に落とされてしまう。
-    掛け時計の秒針と窓の外の雲を、しきい値に対して十分な余裕をもって動かす。
+# 7セグメントの各区画（a〜g）。数字ごとに点く区画。
+_SEG_ON = {0: "abcdef", 1: "bc", 2: "abdeg", 3: "abcdg", 4: "bcfg",
+           5: "acdfg", 6: "acdefg", 7: "abc", 8: "abcdefg", 9: "abcdfg"}
+
+
+def _seven_seg(f, x, y, dw, dh, th, digit):
+    """左上(x, y)・幅dw・高さdhの7セグ数字を1桁描く。"""
+    hh = dh // 2
+    g = th // 2 + 2                                    # 区画どうしのすき間（LEDらしく離す）
+    segs = {"a": ((x + g, y), (x + dw - g, y)), "g": ((x + g, y + hh), (x + dw - g, y + hh)),
+            "d": ((x + g, y + dh), (x + dw - g, y + dh)),
+            "f": ((x, y + g), (x, y + hh - g)), "b": ((x + dw, y + g), (x + dw, y + hh - g)),
+            "e": ((x, y + hh + g), (x, y + dh - g)), "c": ((x + dw, y + hh + g), (x + dw, y + dh - g))}
+    on = _SEG_ON[digit]
+    for k, (p1, p2) in segs.items():
+        cv2.line(f, p1, p2, LED if k in on else LED_OFF, th, cv2.LINE_AA)
+
+
+def draw_stopwatch(f, x, y, sec):
+    """壁掛けのデジタルタイマー（「秒.1/1000秒」の5桁。光電門タイマーと同じ表示）。
+
+    映像の中で時間が流れていることが一目で分かる。60fps では 1/100 秒と
+    1/1000 秒の桁が毎コマ必ず変わるので、球が止まっているコマも「同じ絵」に
+    ならず、アプリの複製除外（changedFraction < 0.08%）に落とされない。
+    """
+    dw, dh, th, gap = 24, 64, 6, 13   # 判定は縦が1/11に潰れるので、数字は縦長に大きく
+    ms = int(round(sec * 1000)) % 100000
+    digits = [ms // 10000, ms // 1000 % 10, ms // 100 % 10, ms // 10 % 10, ms % 10]
+    pw = 5 * dw + 4 * gap + 28 + 16
+    cv2.rectangle(f, (x - 4, y - 4), (x + pw + 4, y + dh + 40), (90, 92, 96), -1, cv2.LINE_AA)
+    cv2.rectangle(f, (x, y), (x + pw, y + dh + 36), PANEL, -1)
+    cx = x + 18
+    for k, d in enumerate(digits):
+        _seven_seg(f, cx, y + 18, dw, dh, th, d)
+        cx += dw + gap
+        if k == 1:                                         # 小数点
+            cv2.circle(f, (cx - gap // 2 + 2, y + 18 + dh), 4, LED, -1, cv2.LINE_AA)
+            cx += 12
+
+
+def draw_motion_props(f, i):
+    """教室の「動くもの」（掛け時計の秒針・窓の外の雲）を描く。
+
+    どちらも実物らしい速さにしてある（秒針は1秒ごとに1目盛り、雲はゆっくり）。
+    静止したコマを複製と誤判定させない役目は、自由落下サンプルの
+    ストップウォッチ（draw_stopwatch）が担う。
     針も雲も球からは離れた位置に描くので、追跡の真値には影響しない。
     """
     h, w = f.shape[:2]
     s = 1 << SHIFT
 
-    # 掛け時計（黒板の右上・壁の高いところ）。秒針は1秒で1周させる。
-    # 実物より速いが、静止コマを「同じ絵」にしないための仕掛けなので割り切る。
-    cx, cy = int(w * 0.80), int(h * 0.055)
-    r = max(18, int(w * 0.062))
+    # 掛け時計（黒板の右上・壁の高いところ）。秒針は1秒ごとにカチッと1目盛り進む。
+    r = max(18, int(min(w, h) * 0.062))                   # 横動画でも上端で切れない大きさ
+    cx, cy = int(w * 0.80), max(int(h * 0.055), r + 8)
     cv2.circle(f, (cx * s, cy * s), (r + 3) * s, HAND, -1, cv2.LINE_AA, SHIFT)
     cv2.circle(f, (cx * s, cy * s), r * s, CLOCK, -1, cv2.LINE_AA, SHIFT)
     for k in range(12):                                   # 文字盤の目盛り
@@ -123,21 +166,20 @@ def draw_motion_props(f, i):
         cv2.line(f, (cx * s, cy * s),
                  (int((cx + math.cos(ang) * r * ln) * s), int((cy + math.sin(ang) * r * ln) * s)),
                  HAND, th, cv2.LINE_AA, SHIFT)
-    a = -math.pi / 2 + math.pi * 2 * (i % FPS) / FPS      # 秒針: 1周 = 60コマ
+    sec = 17 + (i + 20) // FPS                            # 秒針: 1秒ごとに1目盛り（6°）
+    a = -math.pi / 2 + math.pi * 2 * sec / 60
     cv2.line(f, (cx * s, cy * s),
              (int((cx + math.cos(a) * r * 0.88) * s), int((cy + math.sin(a) * r * 0.88) * s)),
              (60, 60, 200), 3, cv2.LINE_AA, SHIFT)
     cv2.circle(f, (cx * s, cy * s), 3 * s, HAND, -1, cv2.LINE_AA, SHIFT)
 
-    # 窓の外を流れる雲。アプリの複製除外は 160x90 に縮小して判定するので、
-    # 縦方向は約1/11に潰れる。ゆっくりの雲では「絵が変わっていない」と見なされて
-    # 静止コマが落とされるため、常に雲が窓の中にいるよう3つ並べ、しっかり流す。
+    # 窓の外をゆっくり流れる雲（1コマに 0.3〜0.5 px）。
     wx1, wy1 = int(w * 0.70), int(h * 0.11)
     wx2, wy2 = int(w * 0.96), int(h * 0.40)
     ww, wh = wx2 - wx1, wy2 - wy1
     sub = f[wy1:wy2, wx1:wx2].copy()
     span = ww + 220
-    for k, (fy, rr, spd) in enumerate(((0.28, 0.30, 6.5), (0.58, 0.24, 5.0), (0.80, 0.20, 7.5))):
+    for k, (fy, rr, spd) in enumerate(((0.28, 0.30, 0.4), (0.58, 0.24, 0.3), (0.80, 0.20, 0.5))):
         cxx = -110 + ((i * spd + k * span / 3.0) % span)
         cyy = wh * fy
         rad = wh * rr
@@ -154,18 +196,38 @@ def new_frame(w, h, i=None):
     return f
 
 
-def draw_scale_bar(f, x, y, px_per_m):
-    """「1 m」のスケールバー。背景が明るくても暗くても消えないよう、
-    濃い縁取りの上に明るい線を重ねる。"""
-    x2 = x + px_per_m
-    xm = x + px_per_m // 2
-    for color, extra in ((INK, 3), (BAR, 0)):        # 縁取り → 本体
-        cv2.line(f, (x, y), (x2, y), color, 3 + extra, cv2.LINE_AA)
-        for xt, half in ((x, 9), (x2, 9), (xm, 6)):  # 両端は長め、中央(50cm)は短めのティック
-            cv2.line(f, (xt, y - half), (xt, y + half), color, 3 + extra, cv2.LINE_AA)
+RULER = (150, 205, 232)    # BGR: 1 m ものさしの木の色（青を残し、球のアンバー検出と重ならない）
+
+
+def draw_ruler(f, x, y_bottom, px_per_m):
+    """床に縦に立てた 1 m ものさし。下端（0）が y_bottom、上端（100）が y_bottom - px_per_m。
+
+    実験では、ものさしを落下の向き（縦）に立てて一緒に写すことが多いので、それに合わせる。
+    目盛りは 1 cm ごと（細かすぎる縮尺では 5 cm ごと）、10 cm ごとに数字。
+    校正は両端（0 と 100）をタップすれば 1 m になる。
+    """
+    top = y_bottom - px_per_m
+    wd = 30 if px_per_m >= 400 else 24
+    cv2.rectangle(f, (x, top), (x + wd, y_bottom), RULER, -1)
+    cv2.rectangle(f, (x, top), (x + wd, y_bottom), INK, 1)
+    step_cm = 1 if px_per_m / 100 >= 4 else 5
+    for cm in range(0, 101, step_cm):
+        y = int(round(y_bottom - px_per_m * cm / 100))
+        ln = wd * 0.55 if cm % 10 == 0 else (wd * 0.35 if cm % 5 == 0 else wd * 0.2)
+        cv2.line(f, (x, y), (x + int(ln), y), INK, 1, cv2.LINE_AA)
+    for cm in range(10, 100, 10):                     # 数字（10〜90）。目盛りの右の空きに置く
+        y = int(round(y_bottom - px_per_m * cm / 100))
+        cv2.putText(f, str(cm), (x + int(wd * 0.5), y + 4), cv2.FONT_HERSHEY_PLAIN,
+                    0.75 if wd >= 30 else 0.6, INK, 1, cv2.LINE_AA)
+    # 両端をはっきりさせる（ここをタップして校正する）
+    for y in (top, y_bottom):
+        cv2.line(f, (x - 3, y), (x + wd + 3, y), INK, 2, cv2.LINE_AA)
+    # 「1 m」の札（ものさしの右、上寄り）
     label = "1 m"
     (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-    lx, ly = xm - tw // 2, y - 14
+    lx, ly = x + wd + 10, top + px_per_m // 4
+    if lx + tw + 8 > f.shape[1]:                      # 右に入らなければ左に置く
+        lx = x - 10 - tw
     cv2.rectangle(f, (lx - 6, ly - th - 5), (lx + tw + 6, ly + 5), INK, -1)
     cv2.putText(f, label, (lx, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.6, BAR, 2, cv2.LINE_AA)
 
@@ -177,6 +239,42 @@ def ball(f, x, y, r, color):
     c = (int(round(x * s)), int(round(y * s)))
     cv2.circle(f, c, int((r + 1.5) * s), INK, -1, cv2.LINE_AA, SHIFT)
     cv2.circle(f, c, int(r * s), color, -1, cv2.LINE_AA, SHIFT)
+
+
+SKIN = (160, 192, 234)     # BGR: 手（青を多めに残し、球のアンバー検出に入らない）
+SKIN_EDGE = (110, 138, 178)
+SLEEVE = (112, 92, 70)     # BGR: 制服の袖（紺）
+
+
+def draw_hand(f, bx, by, open_amt, lift):
+    """上から球をつまんで持つ手。open_amt=0 で握り、1 で指が開ききる。
+    lift は放したあとに手が上へ引く量（px）。
+
+    手のひらは球の上端より上に描くので、指が開けば球には一切かからない
+    （落下中のコマで球の見え方＝真値に影響しない）。
+    """
+    s = 1 << SHIFT
+    py = by - 38 - lift                                   # 手のひらの中心
+    # 袖と腕: 画面の上端から手のひらへ（右上から斜めに入る）
+    arm = np.array([[bx + 4, py - 6], [bx + 30, py - 14],
+                    [bx + 92, -10], [bx + 50, -10]], np.int32)
+    cv2.fillPoly(f, [arm], SKIN, cv2.LINE_AA)
+    cuff = np.array([[bx + 40, py - 52], [bx + 70, py - 60],
+                     [bx + 100, -10], [bx + 60, -10]], np.int32)
+    cv2.fillPoly(f, [cuff], SLEEVE, cv2.LINE_AA)
+    # 指（親指と人さし指・中指）。付け根を中心に外へ開く
+    ang = math.radians(58) * open_amt
+    for side, base_dx, ln in ((-1, -15, 34), (1, 15, 36), (1, 7, 32)):
+        bxx, byy = bx + base_dx, py + 8
+        a = side * ang
+        tip = (bxx + side * 4 + math.sin(a) * ln, byy + math.cos(a) * ln)
+        for col, th in ((SKIN_EDGE, 12), (SKIN, 9)):
+            cv2.line(f, (int(bxx * s), int(byy * s)), (int(tip[0] * s), int(tip[1] * s)),
+                     col, th, cv2.LINE_AA, SHIFT)
+    cv2.ellipse(f, (int(bx * s), int(py * s)), (25 * s, 17 * s), 0, 0, 360,
+                SKIN_EDGE, -1, cv2.LINE_AA, SHIFT)
+    cv2.ellipse(f, (int(bx * s), int(py * s)), (23 * s, 15 * s), 0, 0, 360,
+                SKIN, -1, cv2.LINE_AA, SHIFT)
 
 
 def encode(name, frames, w, h):
@@ -200,33 +298,73 @@ def encode(name, frames, w, h):
 G = 9.8  # m/s^2
 
 
-# 自由落下サンプルだけは、授業でトリミング操作も体験できるよう、
-# 運動の前後に「何も起きていない区間」を付けてある（真値は落下の35コマのまま）。
-FF_LEAD = 24    # 落とす前（手で持って静止）
-FF_TAIL = 21    # 落ちきった後（床で静止）
+# 自由落下サンプルは、実際の撮影と同じく「手で持つ → 放す → 落ちる → 床ではねる」
+# までを写してある。生徒は授業で、落下だけを残すトリミングを体験する。
+# 真値の区間は、手を放したコマ（FF_LEAD）から床に着く直前までの FF_FALL コマ。
+FF_LEAD = 45     # 手で持って止まっている（0.75 s）。最後の4コマで指が開く
+FF_OPEN = 4      # 指が開くのにかかるコマ数（この間も球は手の中で止まっている）
+FF_Y0 = 120.0    # 放す位置（球の中心）
+FF_FLOOR = 904.0 # 床に着いたときの球の中心（球の下端 = 918 = ものさしの下端）
+FF_E = 0.45      # 床ではね返るときの反発係数
+FF_TAIL_REST = 30  # はね終わって床で止まっている（0.5 s）
+PPM_TALL = 500   # 縦動画: 500 px = 1 m
+
+
+def _bounce_y(t, y0, floor, ppm):
+    """手を放してから t 秒後の球の中心（落下 → 反発係数 FF_E ではねる → 止まる）。"""
+    t_hit = math.sqrt(2 * (floor - y0) / ppm / G)
+    if t < t_hit:
+        return y0 + 0.5 * G * t * t * ppm, False
+    v = G * t_hit * FF_E                               # はね返った直後の上向きの速さ
+    tt = t - t_hit
+    while v > 0.3:
+        dur = 2 * v / G
+        if tt < dur:
+            return floor - (v * tt - 0.5 * G * tt * tt) * ppm, True
+        tt -= dur
+        v *= FF_E
+    return floor, True
+
+
+def free_fall_frames():
+    """自由落下の真値の区間を返す: (放したコマ, 床に着く直前のコマ, 総コマ数)。
+    テストとマニュアル生成もこの値を使う（tools/gen_samples.py が一次情報源）。"""
+    t_hit = math.sqrt(2 * (FF_FLOOR - FF_Y0) / PPM_TALL / G)
+    n_fall = int(math.floor(t_hit * FPS - 1e-9)) + 1   # t = 0, 1/60, … < t_hit
+    t_rest = t_hit
+    v = G * t_hit * FF_E
+    while v > 0.3:
+        t_rest += 2 * v / G
+        v *= FF_E
+    total = FF_LEAD + int(math.ceil(t_rest * FPS)) + FF_TAIL_REST
+    return FF_LEAD, FF_LEAD + n_fall - 1, total
 
 
 def gen_free_fall():
-    """自由落下（縦・v0=0）: scale 500px=1m, y0から1.6m落下。
-    前に24コマ・後ろに21コマの静止区間を付ける（トリミングの練習用）。"""
-    W, H, PPM = 540, 960, 500
-    n = 35  # 0.567s → 落下 1.57m
-    Y0 = 80.0
-    y_end = Y0 + 0.5 * G * ((n - 1) / FPS) ** 2 * PPM
+    """自由落下（縦・v0=0）: 500px=1m。手で持って止まっている → 指が開いて放す →
+    1.57 m 落ちて床ではねる → 止まる。ものさしは床に縦に立ててある。"""
+    W, H, PPM = 540, 960, PPM_TALL
+    BX = W / 2
+    first, last, total = free_fall_frames()
     frames = []
-    for k in range(FF_LEAD + n + FF_TAIL):
-        f = new_frame(W, H, k)                      # 時計と雲は全コマ動き続ける
-        draw_scale_bar(f, 20, H - 30, PPM)
-        if k < FF_LEAD:                             # 手で持って静止
-            y = Y0
-        elif k < FF_LEAD + n:                       # 落下（ここが真値の区間）
-            t = (k - FF_LEAD) / FPS
-            y = Y0 + 0.5 * G * t * t * PPM
-        else:                                       # 落ちきって静止
-            y = y_end
-        ball(f, W / 2, y, 14, AMBER)
+    for k in range(total):
+        f = new_frame(W, H, k)
+        draw_ruler(f, 380, int(FF_FLOOR + 14), PPM)
+        draw_stopwatch(f, 26, 560, 8.4 + k / FPS)
+        if k < FF_LEAD:                               # 手の中で止まっている
+            y = FF_Y0
+            open_amt = max(0.0, (k - (FF_LEAD - FF_OPEN) + 1) / FF_OPEN)
+            lift = 0.0
+        else:                                         # 放した後（k = FF_LEAD が t = 0）
+            y, _ = _bounce_y((k - FF_LEAD) / FPS, FF_Y0, FF_FLOOR, PPM)
+            open_amt = 1.0
+            u = min(1.0, (k - FF_LEAD) / 14)          # 手は少し上へ引く
+            lift = 16 * (1 - (1 - u) ** 2)
+        ball(f, BX, y, 14, AMBER)
+        draw_hand(f, BX, FF_Y0, open_amt, lift)
         frames.append(f)
     encode("free_fall.mp4", frames, W, H)
+    print(f"    真値の区間: コマ {first}〜{last}（{last - first + 1}コマ、0始まり）")
 
 
 def gen_vertical_throw():
@@ -237,8 +375,8 @@ def gen_vertical_throw():
     frames = []
     for i in range(n):
         t = i / FPS
-        f = new_frame(W, H)
-        draw_scale_bar(f, 20, H - 30, PPM)
+        f = new_frame(W, H, i)
+        draw_ruler(f, 380, 918, PPM)
         y = 880 - (V0 * t - 0.5 * G * t * t) * PPM
         ball(f, W / 2, y, 14, AMBER)
         frames.append(f)
@@ -253,8 +391,8 @@ def gen_projectile():
     frames = []
     for i in range(n):
         t = i / FPS
-        f = new_frame(W, H)
-        draw_scale_bar(f, 20, H - 30, PPM)
+        f = new_frame(W, H, i)
+        draw_ruler(f, 915, 520, PPM)                  # 着地点（x≈877）より右に立てる
         x = 40 + V0X * t * PPM
         y = 40 + 0.5 * G * t * t * PPM
         ball(f, x, y, 12, AMBER)
@@ -271,8 +409,8 @@ def gen_oblique():
     frames = []
     for i in range(n):
         t = i / FPS
-        f = new_frame(W, H)
-        draw_scale_bar(f, 20, H - 30, PPM)
+        f = new_frame(W, H, i)
+        draw_ruler(f, 880, 506, PPM)
         x = 60 + v0x * t * PPM
         y = 480 - (v0y * t - 0.5 * G * t * t) * PPM
         ball(f, x, y, 12, AMBER)

@@ -317,13 +317,14 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             30000, '新サンプル読込');
         const smp = await evalExpr(cdp, S,
             `({ n: appState.frameTimes.length, fps: appState.videoFps, vw: appState.videoElement.videoWidth })`);
-        ok(smp.n >= 78 && smp.n <= 80, `新サンプル: 実時刻表 ${smp.n}コマ (前後の静止区間こみで期待80)`);
+        ok(smp.n === 160, `新サンプル: 実時刻表 ${smp.n}コマ (手で持つ・はねる区間こみで期待160)`);
         ok(Math.abs(smp.fps - 60) < 0.5, `新サンプル: fps≈60 (実測 ${smp.fps})`);
         ok(smp.vw === 540, `新サンプル: 540x960で実デコード`);
 
-        // 自由落下サンプルには前後に静止区間がある（トリミングの練習用）。
-        // その区間を切り落とせば、落下だけが解析され g が 9.8 になることを確かめる。
-        // ここが崩れると「トリミングを教える」ことと「真値が出る」ことが両立しない。
+        // 自由落下サンプルは「手で持つ → 放す → 落ちる → 床ではねる」まで写っている
+        // （トリミングの練習用）。放してから床に着くまでだけを残せば g が 9.8 になることを
+        // 確かめる。ここが崩れると「トリミングを教える」ことと「真値が出る」ことが両立しない。
+        // 真値の区間（gen_samples.py の free_fall_frames）: コマ 45〜78。
         const trimmed = await evalExpr(cdp, S, `(async () => {
             const s = appState, v = s.videoElement;
             const cv = document.createElement('canvas'); cv.width = 135; cv.height = 240;
@@ -346,12 +347,16 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
                 }
                 ys.push(c ? { x: sx / c * (v.videoWidth / cv.width), y: sy / c * (v.videoHeight / cv.height) } : null);
             }
-            // 動き出す／止まるコマを探す（静止区間の長さの確認用）
-            const moved = ys.map((p, i) => (i && p && ys[i-1]) ? Math.abs(p.y - ys[i-1].y) : 0);
-            const first = moved.findIndex(m => m > 1.5);
-            let last = moved.length - 1; while (last > 0 && moved[last] <= 1.5) last--;
-            // 落下区間だけを解析範囲にして打点する
-            s.rangeIn = first - 1; s.rangeOut = last;
+            // 落ち始めるコマと、床ではね返る直前のコマを映像から探す。
+            // 手で持っている間は指が球にかかって重心が少し揺れるので、
+            // 「その先ずっと下がり続ける最初のコマ」を落ち始めとする。
+            const dy = ys.map((p, i) => (p && ys[i+1]) ? ys[i+1].y - p.y : 0);
+            const bounce = dy.findIndex((d, i) => i > 10 && d < -1.5);     // はじめて上へ動く
+            let first = bounce - 1;
+            while (first > 0 && dy[first - 1] > 0.3) first--;
+            const last = bounce;                       // 床に一番近づいたコマ
+            // 落下区間だけを解析範囲にして打点する（はね返ったコマは入れない）
+            s.rangeIn = first; s.rangeOut = last - 1;
             s.trackingData = []; s.activeObjectId = 1;
             s.calibration.scaleRatio = 100 / 500;   // 500px = 1m
             for (let k = s.rangeIn; k <= s.rangeOut; k++) {
@@ -369,10 +374,12 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             const g = Math.abs(stv / stt) / 100;
             return { first, last, lead: first, tail: s.totalFrames - last, n: data.length, g };
         })()`);
-        ok(trimmed.lead >= 15 && trimmed.tail >= 12,
-            `自由落下サンプルに前後の静止区間がある（前 ${trimmed.lead} / 後 ${trimmed.tail} コマ）`);
+        ok(trimmed.first === 45 && trimmed.last === 79,
+            `自由落下サンプル: コマ ${trimmed.first} で放し、コマ ${trimmed.last} で床ではね返る（期待 45 / 79）`);
+        ok(trimmed.lead >= 30 && trimmed.tail >= 60,
+            `自由落下サンプルに前後の区間がある（前 ${trimmed.lead} / 後 ${trimmed.tail} コマ）`);
         ok(Math.abs(trimmed.g - 9.8) / 9.8 < 0.05,
-            `静止区間を切ると g=${trimmed.g.toFixed(3)} m/s²（${trimmed.n}点・9.8の5%以内）`);
+            `落下だけを残すと g=${trimmed.g.toFixed(3)} m/s²（${trimmed.n}点・9.8の5%以内）`);
         await evalExpr(cdp, S, `(appState.rangeIn=0, appState.rangeOut=appState.totalFrames, appState.trackingData=[], 1)`);
 
         // 複製除外がコマを取りこぼさないこと。
@@ -380,7 +387,7 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
         // 画素比較の感度が鈍いと「エンコード複製」と誤判定して実コマを捨ててしまう
         // （2026-08 に発覚。頂点の2コマが消えて時間が飛んでいた）。
         const SAMPLE_FRAMES = [
-            ['free_fall.mp4', 80], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
+            ['free_fall.mp4', 160], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
             ['oblique_throw.mp4', 43]
         ];
         for (const [name, expected] of SAMPLE_FRAMES) {
@@ -392,7 +399,25 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
                 30000, `${name} 読込`);
             const n = await evalExpr(cdp, S, `appState.frameTimes.length`);
             ok(n === expected, `コマ落ちなし: ${name} が ${n}/${expected} コマ`);
+            // 64コマを超える動画は読込時に複製除外をせず、範囲を決めたあとに行う。
+            // 生徒が切らずに進んだ場合（全コマが範囲）と同じ条件で、画素の複製除外を
+            // 直接かけても1コマも落ちないこと（球が止まっているコマも含めて）。
+            const dd = await evalExpr(cdp, S, `(async () => {
+                const d = await dedupTimesByPixel(appState.videoElement, appState.frameTimes.slice());
+                return { kept: d.times.length, skipped: d.skipped };
+            })()`);
+            ok(dd.skipped === 0 && dd.kept === expected,
+                `複製除外をかけても落ちない: ${name}（残り ${dd.kept}/${expected}・除外 ${dd.skipped}）`);
         }
+        // 対照: 上の検査が本当に複製を見分けられること（同じコマを2回並べると1枚だけ除かれる）。
+        // これが通らなければ、上の「除外 0」は検査が動いていないだけかもしれない。
+        const ctl = await evalExpr(cdp, S, `(async () => {
+            const t = appState.frameTimes.slice(0, 10);
+            const twice = [...t.slice(0, 5), t[4] + 1e-4, ...t.slice(5)];   // コマ4と同じ絵をもう1枚
+            const d = await dedupTimesByPixel(appState.videoElement, twice);
+            return { skipped: d.skipped, n: twice.length };
+        })()`);
+        ok(ctl.skipped === 1, `対照: 同じコマを2回並べると1枚除かれる（${ctl.n}枚中 除外 ${ctl.skipped}）`);
 
         // --- 照合コード: 打点から作られ、1点でも動かせば必ず変わる ---
         const verify = await evalAsync(cdp, S, `
