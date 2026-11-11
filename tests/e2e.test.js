@@ -459,6 +459,45 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
         ok(Math.abs(rep.ratio - Math.SQRT2) < 0.01, `レポートがA4縦の比率 (${rep.w}x${rep.h}, 比 ${rep.ratio})`);
         ok(rep.whiteBg, 'レポートの背景が白（印刷向き）');
 
+        // --- 照合QR: 要約の書式と、描いたマスが符号どおりか ---
+        // LLM などで提出画像を読むときに QR を使うため、ここが崩れると集計できなくなる。
+        // 実際の読み取りは OpenCV で確認済み（レポート・縮小版・写真だけの3種）。
+        // ここでは、描いた各マスの白黒が符号の白黒と一致するかを画素で確かめる。
+        const qr = await evalAsync(cdp, S, `
+            const verify = { code: 'AB23-CD45', hex: 'x'.repeat(64) };
+            const text = window.submissionSummaryText(verify);
+            const cv = document.createElement('canvas'); cv.width = 400; cv.height = 400;
+            const ctx = cv.getContext('2d');
+            ctx.fillStyle = '#888'; ctx.fillRect(0, 0, 400, 400);
+            const drawn = window.drawQrCode(ctx, text, 10, 10, 300);
+            const q = qrcode(0, 'M'); q.addData(text, 'Byte'); q.make();
+            const n = q.getModuleCount(), cell = drawn / (n + 8);
+            const img = ctx.getImageData(0, 0, 400, 400).data;
+            let bad = 0, dark = 0;
+            for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+                const px = Math.floor(10 + (c + 4.5) * cell), py = Math.floor(10 + (r + 4.5) * cell);
+                const v = img[(py * 400 + px) * 4];
+                const isDark = v < 128;
+                if (isDark) dark++;
+                if (isDark !== q.isDark(r, c)) bad++;
+            }
+            // 余白（4マス）が白で描かれているか
+            const q0 = img[((10 + 1) * 400 + (10 + 1)) * 4];
+            const strobe = document.createElement('canvas'); strobe.width = 960; strobe.height = 540;
+            const only = document.createElement('canvas');
+            window.composeStrobeOnly(only, strobe, verify);
+            return { text, drawn, n, bad, dark, quietWhite: q0 > 240,
+                     onlyW: only.width, onlyH: only.height };
+        `);
+        ok(/^VMT1;code=AB23-CD45;mode=[a-z-]+;n=\d+;/.test(qr.text) && /;scale=[^;]+;v=[^;]+$/.test(qr.text),
+            `QRの中身が決めた書式どおり (${qr.text})`);
+        ok(!/[^\x20-\x7e]/.test(qr.text), 'QRの中身は英数字だけ（日本語や動画名を入れない）');
+        ok(qr.drawn > 0 && qr.bad === 0 && qr.dark > 50,
+            `描いたQRの全${qr.n * qr.n}マスが符号と一致 (不一致 ${qr.bad})`);
+        ok(qr.quietWhite, 'QRの周りに白い余白がある（読み取りに必要）');
+        ok(qr.onlyW === 960 && qr.onlyH > 540,
+            `写真だけの画像は下に帯を足し、写真を隠さない (${qr.onlyW}x${qr.onlyH})`);
+
     } catch (e) {
         fail++;
         console.error('❌ 実行エラー: ' + e.message);

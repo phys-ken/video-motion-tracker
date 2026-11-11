@@ -4,7 +4,7 @@
 // 意味のある修正をリリースするたびに手動で更新する。index.html の
 // <script src="app.js?v=..."> と <link href="styles.css?v=..."> のクエリ値も同じ文字列に合わせること
 // （キャッシュされた古いapp.jsで測定していないかを見分けるための唯一の手がかり）。
-const APP_VERSION = '2026-09-11a';
+const APP_VERSION = '2026-11-11a';
 window.APP_VERSION = APP_VERSION;
 
 // --- 状態管理を一元化 ---
@@ -4561,7 +4561,9 @@ const REPORT_H = Math.round(REPORT_W * Math.SQRT2);      // 2339
 async function composeReport(target, strobeCanvas, verify) {
     const pad = 46;
     const headH = 96;
-    const footH = 104;
+    // 下の帯には照合コードと QR を置く。QR は百数十文字ぶんあるので、
+    // 縮小されても読める大きさ（約200px）を確保する。
+    const footH = 250;
     target.width = REPORT_W;
     target.height = REPORT_H;
     const ctx = target.getContext('2d');
@@ -4644,26 +4646,33 @@ async function composeReport(target, strobeCanvas, verify) {
     }
     GRAPH_SCALE = 1;
 
-    // ---- 帯: 照合コードと条件 ----
+    // ---- 帯: 照合コード・条件・QR ----
     const fy = bodyBottom + 20;
+    const bandH = footH - 20;
     ctx.fillStyle = '#F1F3F6';
-    roundRectPath(ctx, pad, fy, bodyW, footH - 20, 10);
+    roundRectPath(ctx, pad, fy, bodyW, bandH, 10);
     ctx.fill();
+    // QR は右端。読み取りやすいよう帯の高さいっぱいに近い大きさにする
+    const qrBox = bandH - 20;
+    const qrDrawn = drawQrCode(ctx, submissionSummaryText(verify),
+        REPORT_W - pad - 10 - qrBox, fy + 10, qrBox);
+    const qrLeft = REPORT_W - pad - 10 - (qrDrawn || 0);
     ctx.fillStyle = UI_COLORS.textSub;
     ctx.font = `22px ${FONT_SANS}`;
-    ctx.fillText('照合コード', pad + 26, fy + 34);
+    ctx.fillText('照合コード', pad + 26, fy + 64);
     ctx.fillStyle = UI_COLORS.text;
-    ctx.font = `bold 46px ${FONT_MONO}`;
-    ctx.fillText(verify.code, pad + 26, fy + 74);
+    ctx.font = `bold 58px ${FONT_MONO}`;
+    ctx.fillText(verify.code, pad + 26, fy + 134);
     ctx.textAlign = 'right';
     ctx.font = `22px ${FONT_SANS}`;
     ctx.fillStyle = UI_COLORS.textSub;
     const scaleText = appState.calibration.scaleRatio
         ? `スケール ${appState.calibration.scaleActual} cm`
         : 'スケール未設定（px）';
-    ctx.fillText(`打点 ${data.length} 点　/　${scaleText}　/　${appState.videoName || ''}`,
-        REPORT_W - pad - 26, fy + 40);
-    ctx.fillText(`v${APP_VERSION}`, REPORT_W - pad - 26, fy + 74);
+    const infoRight = qrLeft - 28;
+    ctx.fillText(`打点 ${data.length} 点　/　${scaleText}`, infoRight, fy + 64);
+    ctx.fillText(appState.videoName || '', infoRight, fy + 100);
+    ctx.fillText(`v${APP_VERSION}`, infoRight, fy + 136);
     ctx.textAlign = 'left';
 }
 
@@ -4775,29 +4784,106 @@ function drawFramedImage(ctx, img, box) {
     ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
 }
 
-// 画像の隅に照合コードを焼き込む。スクリーンショットで提出されても、
-// 画面に見えている文字列で照合できるようにするため。
-function stampVerificationCode(canvas, code) {
-    const ctx = canvas.getContext('2d');
-    const fs = Math.max(16, Math.round(canvas.width * 0.028));
-    const pad = Math.round(fs * 0.5);
+// 「写真だけ」の提出画像。ストロボ写真の下に帯を足し、照合コードと QR を置く。
+// 以前は写真の右下にラベルを重ねていたが、横向きの水平投射では着地付近の打点が
+// 隠れた。帯に分ければ写真は一切隠れない（画像はその分だけ縦に長くなる）。
+// スクリーンショットで提出されても、帯の文字と QR で照合できる。
+function composeStrobeOnly(target, strobeCanvas, verify) {
+    const W = strobeCanvas.width;
+    const unit = Math.max(1, Math.min(W, strobeCanvas.height) / 540);   // 540px幅を基準に拡大
+    const qrBox = Math.round(Math.max(170, 190 * unit));
+    const pad = Math.round(16 * unit);
+    const bandH = qrBox + pad * 2;
+    target.width = W;
+    target.height = strobeCanvas.height + bandH;
+    const ctx = target.getContext('2d');
+    ctx.drawImage(strobeCanvas, 0, 0);
+    const y0 = strobeCanvas.height;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, y0, W, bandH);
+    ctx.fillStyle = '#CBD2D9';
+    ctx.fillRect(0, y0, W, Math.max(1, Math.round(unit)));
+
+    const drawn = drawQrCode(ctx, submissionSummaryText(verify), W - pad - qrBox, y0 + pad, qrBox);
+    const textW = W - pad * 3 - (drawn || 0);
+    const n = appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame)).length;
     ctx.save();
-    ctx.font = `bold ${fs}px ${FONT_MONO}`;
-    const text = `照合 ${code}`;
-    const w = ctx.measureText(text).width + pad * 2;
-    const h = fs + pad * 2;
-    const x = canvas.width - w - pad, y = canvas.height - h - pad;
-    roundRectPath(ctx, x, y, w, h, pad);
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(31,41,51,0.35)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = '#1F2933';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
-    ctx.fillText(text, x + w / 2, y + h / 2);
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = UI_COLORS.textSub;
+    ctx.font = `${Math.round(15 * unit)}px ${FONT_SANS}`;
+    ctx.fillText('照合コード', pad, y0 + pad + Math.round(22 * unit));
+    ctx.fillStyle = UI_COLORS.text;
+    // 帯の幅に収まる大きさで照合コードを書く
+    let fsCode = Math.round(40 * unit);
+    ctx.font = `bold ${fsCode}px ${FONT_MONO}`;
+    while (ctx.measureText(verify.code).width > textW && fsCode > 12) {
+        fsCode -= 2;
+        ctx.font = `bold ${fsCode}px ${FONT_MONO}`;
+    }
+    ctx.fillText(verify.code, pad, y0 + pad + Math.round(22 * unit) + fsCode + Math.round(6 * unit));
+    ctx.fillStyle = UI_COLORS.textSub;
+    ctx.font = `${Math.round(14 * unit)}px ${FONT_SANS}`;
+    const lines = [`${currentMode().label}　打点 ${n} 点`, `v${APP_VERSION}`];
+    lines.forEach((t, i) => ctx.fillText(t, pad,
+        y0 + bandH - pad - (lines.length - 1 - i) * Math.round(20 * unit), textW));
     ctx.restore();
+}
+
+// --- 照合QR -----------------------------------------------------------
+// 提出画像を LLM などで読み取って集計するとき、画像の文字を読ませるより
+// QR を読ませるほうが確実なので、照合コードと測定の要約を QR にも入れる。
+// 中身は英数字の1行だけにする（日本語を入れると QR が大きくなり、動画の
+// ファイル名には生徒の名前が入っていることがあるので入れない）。
+// 例: VMT1;code=K7M2-9QX4;mode=free-fall;n=35;a=9.782m/s2;r2=0.9998;t=0.49-0.89s;scale=100cm;v=2026-11-11a
+//   a は vy–t の傾き（＝平均加速度）。符号は運動の種類が決める軸の向きに従う
+//   （投げ上げは上向きが正なので負になる）。区間を選ばずに進んだときは a/r2/t を省く。
+const QR_FORMAT = 'VMT1';
+function submissionSummaryText(verify) {
+    const data = appState.trackingData
+        .filter(p => p.objectId === appState.activeObjectId && inAnalysisRange(p.frame))
+        .sort((a, b) => a.frame - b.frame);
+    const unit = appState.calibration.scaleRatio ? 'cm' : 'px';
+    const parts = [QR_FORMAT, `code=${verify.code}`,
+        `mode=${appState.motionMode || DEFAULT_MOTION_MODE}`, `n=${data.length}`];
+    if (appState.showSlope && appState.slopeRange && data.length >= 3) {
+        const kin = computeKinematics(data);
+        const { xs, ys } = slopeSampleOf(graphSeriesFor('vy-t', kin, unit), appState.slopeRange);
+        const a = xs.length >= 3 ? slopeOf(xs, ys) : null;
+        if (a !== null) {
+            parts.push(unit === 'cm' ? `a=${(a / 100).toFixed(3)}m/s2` : `a=${a.toFixed(1)}px/s2`);
+            parts.push(`r2=${r2Of(xs, ys)}`);
+            parts.push(`t=${appState.slopeRange.a.toFixed(2)}-${appState.slopeRange.b.toFixed(2)}s`);
+        }
+    }
+    parts.push(appState.calibration.scaleRatio ? `scale=${appState.calibration.scaleActual}cm` : 'scale=none');
+    parts.push(`v=${APP_VERSION}`);
+    return parts.join(';');
+}
+
+// QR を (x, y) から一辺 size 以内に描き、実際に描いた一辺の長さを返す。
+// 1マスを整数ピクセルにそろえ、周りに4マスの白い余白（読み取りに必要）を付ける。
+function drawQrCode(ctx, text, x, y, size) {
+    if (typeof qrcode !== 'function') return 0;
+    const qr = qrcode(0, 'M');
+    qr.addData(text, 'Byte');
+    qr.make();
+    const n = qr.getModuleCount();
+    const quiet = 4;
+    const cell = Math.max(1, Math.floor(size / (n + quiet * 2)));
+    const total = cell * (n + quiet * 2);
+    ctx.save();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(x, y, total, total);
+    ctx.fillStyle = '#000000';
+    for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+            if (qr.isDark(r, c)) ctx.fillRect(x + (c + quiet) * cell, y + (r + quiet) * cell, cell, cell);
+        }
+    }
+    ctx.restore();
+    return total;
 }
 
 // --- 提出パネル --------------------------------------------------------
@@ -4899,14 +4985,10 @@ function setupStrobe() {
     const buildSubmission = async () => {
         const verify = await computeVerificationCode();
         const wantReport = reportChk.checked;
-        let out = cv;
-        if (wantReport) {
-            out = document.createElement('canvas');
-            await composeReport(out, cv, verify);
-        } else {
-            // 写真だけのときも、画像の中に照合コードは必ず焼き込む
-            stampVerificationCode(cv, verify.code);
-        }
+        // どちらの形でも、照合コードと QR は画像の中に必ず入れる
+        const out = document.createElement('canvas');
+        if (wantReport) await composeReport(out, cv, verify);
+        else composeStrobeOnly(out, cv, verify);
         const blob = await new Promise(res => out.toBlob(res, 'image/png'));
         if (!blob) throw new Error('PNGの生成に失敗しました');
         const kind = wantReport ? 'report' : (strobeDisplayMode() === 'dots' ? 'strobe_dots' : 'strobe');
@@ -4917,6 +4999,7 @@ function setupStrobe() {
             'tracker-points': String(strobePoints(1).length),
             'tracker-video': appState.videoName || '',
             'tracker-version': APP_VERSION,
+            'tracker-summary': submissionSummaryText(verify),   // QR と同じ内容
             'Software': '動画解析トラッカー'
         });
         return { blob: tagged, code: verify.code,

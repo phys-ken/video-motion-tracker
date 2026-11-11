@@ -11,6 +11,7 @@
 |---|---|---|---|---|
 | `vendor/xlsx.full.min.js` | SheetJS Community Edition (`xlsx`) | 0.18.5 | Apache License 2.0 | <https://sheetjs.com/> |
 | `vendor/mp4box.all.min.js` | MP4Box.js (GPAC) | 2025-03-19 | BSD 3-Clause | <https://github.com/gpac/mp4box.js> |
+| `vendor/qrcode.js` | QR Code Generator for JavaScript (`qrcode-generator`, Kazuhiko Arase) | 1.4.4 | MIT | <https://github.com/kazuhikoarase/qrcode-generator> |
 | `vendor/material-icons-round.woff2`<br>`vendor/material-icons-round.css` | Material Icons (Round) | — | Apache License 2.0 | <https://github.com/google/material-design-icons> |
 
 用途:
@@ -18,6 +19,8 @@
 - **SheetJS** … 測定データの `.xlsx` 書き出し。
 - **MP4Box.js** … 動画コンテナ（MP4 / MOV）を解析して各コマの正確な表示時刻を取得。
   これにより、動画のfpsに依存せず正しい時刻 t を得ています。
+- **QR Code Generator** … 提出画像に、照合コードと測定の要約を入れたQRコードを描く。
+  「QRコード」は株式会社デンソーウェーブの登録商標です。
 - **Material Icons** … 画面のアイコン。
 
 本文の書体は端末に内蔵された書体（ヒラギノ角ゴ、Noto Sans JP 等）を使うため、
@@ -27,6 +30,7 @@ Webフォントの同梱・読み込みはありません。
 
 - Apache License 2.0: <https://www.apache.org/licenses/LICENSE-2.0>
 - BSD 3-Clause License: <https://opensource.org/license/bsd-3-clause>
+- MIT License: <https://opensource.org/license/mit>
 
 ## 参考にした先行ソフトウェア（コードの流用はありません）
 
