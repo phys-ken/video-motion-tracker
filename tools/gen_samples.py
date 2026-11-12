@@ -430,13 +430,14 @@ G = 9.8  # m/s^2
 
 # 自由落下サンプルは、実際の撮影と同じく「手で持つ → 放す → 落ちる → 床ではねる」
 # までを写してある。生徒は授業で、落下だけを残すトリミングを体験する。
-# 真値の区間は、手を放したコマ（FF_LEAD）から床に着く直前までの FF_FALL コマ。
-FF_LEAD = 45     # 手で持って止まっている（0.75 s）。最後の4コマで指が開く
+# 真値の区間は、手を放したコマ（FF_LEAD）から床に着く直前まで。
+# 打点の手間を増やさないよう、前後は「何が起きたか分かる」最小限にとどめる（全64コマ）。
+FF_LEAD = 15     # 手で持って止まっている（0.25 s）。最後の4コマで指が開く
 FF_OPEN = 4      # 指が開くのにかかるコマ数（この間も球は手の中で止まっている）
 FF_Y0 = 120.0    # 放す位置（球の中心）
 FF_FLOOR = 904.0 # 床に着いたときの球の中心（球の下端 = 918 = ものさしの下端）
 FF_E = 0.45      # 床ではね返るときの反発係数
-FF_TAIL_REST = 30  # はね終わって床で止まっている（0.5 s）
+FF_TAIL = 15     # 床に着いてからのコマ数（1回目にはね上がる途中で終わる）
 PPM_TALL = 500   # 縦動画: 500 px = 1 m
 
 
@@ -461,18 +462,12 @@ def free_fall_frames():
     テストとマニュアル生成もこの値を使う（tools/gen_samples.py が一次情報源）。"""
     t_hit = math.sqrt(2 * (FF_FLOOR - FF_Y0) / PPM_TALL / G)
     n_fall = int(math.floor(t_hit * FPS - 1e-9)) + 1   # t = 0, 1/60, … < t_hit
-    t_rest = t_hit
-    v = G * t_hit * FF_E
-    while v > 0.3:
-        t_rest += 2 * v / G
-        v *= FF_E
-    total = FF_LEAD + int(math.ceil(t_rest * FPS)) + FF_TAIL_REST
-    return FF_LEAD, FF_LEAD + n_fall - 1, total
+    return FF_LEAD, FF_LEAD + n_fall - 1, FF_LEAD + n_fall + FF_TAIL
 
 
 def gen_free_fall():
     """自由落下（縦・v0=0）: 500px=1m。手で持って止まっている → 指が開いて放す →
-    1.57 m 落ちて床ではねる → 止まる。ものさしは床に縦に立ててある。"""
+    1.57 m 落ちて床ではね上がる途中まで（全64コマ・約1秒）。ものさしは床に縦に立ててある。"""
     W, H, PPM = 540, 960, PPM_TALL
     BX = W / 2
     first, last, total = free_fall_frames()

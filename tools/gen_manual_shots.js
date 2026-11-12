@@ -12,7 +12,7 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'manual', 'img');
 const CHROME = process.env.CHROME_BIN || 'google-chrome';
 // 自由落下サンプルの寸法（tools/gen_samples.py と合わせる。あちらが一次情報源）
-const FF_FIRST = 45, FF_LAST = 78;           // 手を放したコマ／床に着く直前のコマ
+const FF_FIRST = 15, FF_LAST = 48;           // 手を放したコマ／床に着く直前のコマ
 const FF_Y0 = 120;                           // 放す位置（球の中心）
 const RULER_X = 395, RULER_BOTTOM = 918, RULER_TOP = 418;   // 1 m ものさしの中心線と両端
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -221,7 +221,7 @@ class CDP { constructor(ws) { this.ws = ws; this.id = 0; this.p = new Map();
         await sleep(700);
 
         // ③ 使う範囲を決める
-        // 手を放したコマ（45）から、床に着く直前のコマ（78）まで（gen_samples.py の free_fall_frames）
+        // 手を放したコマから、床に着く直前のコマまで（gen_samples.py の free_fall_frames）
         await ev(`window.seekToFrame(${FF_FIRST}); await new Promise(r=>setTimeout(r,500));
                   document.getElementById('trim-set-in').click(); await new Promise(r=>setTimeout(r,200));
                   window.seekToFrame(${FF_LAST}); await new Promise(r=>setTimeout(r,500));

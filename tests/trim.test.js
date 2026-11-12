@@ -169,7 +169,7 @@ try {
         window.updateRangeUI();
         window.seekToFrame(58); await new Promise(r=>setTimeout(r,450));
         document.getElementById('trim-set-out').click(); await new Promise(r=>setTimeout(r,200));
-        window.seekToFrame(70); await new Promise(r=>setTimeout(r,450));
+        window.seekToFrame(62); await new Promise(r=>setTimeout(r,450));
         const btn = document.getElementById('trim-set-in');
         const blocked = btn.classList.contains('is-blocked');
         const aria = btn.getAttribute('aria-disabled');

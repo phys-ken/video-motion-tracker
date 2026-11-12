@@ -317,14 +317,14 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             30000, '新サンプル読込');
         const smp = await evalExpr(cdp, S,
             `({ n: appState.frameTimes.length, fps: appState.videoFps, vw: appState.videoElement.videoWidth })`);
-        ok(smp.n === 160, `新サンプル: 実時刻表 ${smp.n}コマ (手で持つ・はねる区間こみで期待160)`);
+        ok(smp.n === 64, `新サンプル: 実時刻表 ${smp.n}コマ (手で持つ・はねる区間こみで期待64)`);
         ok(Math.abs(smp.fps - 60) < 0.5, `新サンプル: fps≈60 (実測 ${smp.fps})`);
         ok(smp.vw === 540, `新サンプル: 540x960で実デコード`);
 
         // 自由落下サンプルは「手で持つ → 放す → 落ちる → 床ではねる」まで写っている
         // （トリミングの練習用）。放してから床に着くまでだけを残せば g が 9.8 になることを
         // 確かめる。ここが崩れると「トリミングを教える」ことと「真値が出る」ことが両立しない。
-        // 真値の区間（gen_samples.py の free_fall_frames）: コマ 45〜78。
+        // 真値の区間（gen_samples.py の free_fall_frames）: コマ 15〜48。
         const trimmed = await evalExpr(cdp, S, `(async () => {
             const s = appState, v = s.videoElement;
             const cv = document.createElement('canvas'); cv.width = 135; cv.height = 240;
@@ -374,9 +374,9 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
             const g = Math.abs(stv / stt) / 100;
             return { first, last, lead: first, tail: s.totalFrames - last, n: data.length, g };
         })()`);
-        ok(trimmed.first === 45 && trimmed.last === 79,
-            `自由落下サンプル: コマ ${trimmed.first} で放し、コマ ${trimmed.last} で床ではね返る（期待 45 / 79）`);
-        ok(trimmed.lead >= 30 && trimmed.tail >= 60,
+        ok(trimmed.first === 15 && trimmed.last === 49,
+            `自由落下サンプル: コマ ${trimmed.first} で放し、コマ ${trimmed.last} で床ではね返る（期待 15 / 49）`);
+        ok(trimmed.lead >= 10 && trimmed.tail >= 10,
             `自由落下サンプルに前後の区間がある（前 ${trimmed.lead} / 後 ${trimmed.tail} コマ）`);
         ok(Math.abs(trimmed.g - 9.8) / 9.8 < 0.05,
             `落下だけを残すと g=${trimmed.g.toFixed(3)} m/s²（${trimmed.n}点・9.8の5%以内）`);
@@ -387,7 +387,7 @@ async function waitUntil(cdp, S, expr, timeoutMs, label) {
         // 画素比較の感度が鈍いと「エンコード複製」と誤判定して実コマを捨ててしまう
         // （2026-08 に発覚。頂点の2コマが消えて時間が飛んでいた）。
         const SAMPLE_FRAMES = [
-            ['free_fall.mp4', 160], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
+            ['free_fall.mp4', 64], ['vertical_throw.mp4', 54], ['projectile.mp4', 34],
             ['oblique_throw.mp4', 43]
         ];
         for (const [name, expected] of SAMPLE_FRAMES) {
