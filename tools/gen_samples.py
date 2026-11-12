@@ -390,6 +390,16 @@ def _paste(f, layer):
     f[:] = np.clip(f * (1 - a) + small * a, 0, 255).astype(np.uint8)
 
 
+def _hand_ball_overlap(bx, by, open_amt, lift, ball_y, r=14):
+    """手（指・手のひら）が、球（縁込み）の円に何画素かかるか。0 なら触れていない。"""
+    h, w = int(by + 60), int(bx * 2)
+    blank = np.zeros((h, w, 3), np.uint8)
+    draw_hand(blank, bx, by, open_amt, lift, lambda g: None)
+    yy, xx = np.mgrid[0:h, 0:w]
+    disc = (xx - bx) ** 2 + (yy - ball_y) ** 2 <= (r + 1.5) ** 2
+    return int((blank.any(axis=2) & disc).sum())
+
+
 def draw_hand(f, bx, by, open_amt, lift, draw_ball):
     """上から球を持つ手と、その球を描く。open_amt=0 で握り、1 で指が開ききる。
     lift は放したあとに手が上へ引く量（px）。draw_ball(f) は球を描く関数で、
@@ -433,7 +443,9 @@ G = 9.8  # m/s^2
 # 真値の区間は、手を放したコマ（FF_LEAD）から床に着く直前まで。
 # 打点の手間を増やさないよう、前後は「何が起きたか分かる」最小限にとどめる（全64コマ）。
 FF_LEAD = 15     # 手で持って止まっている（0.25 s）。最後の4コマで指が開く
-FF_OPEN = 4      # 指が開くのにかかるコマ数（この間も球は手の中で止まっている）
+FF_OPEN = 4      # 握りがゆるむコマ数（指は球に触れたまま。球は止まっている）
+FF_TOUCH = 0.4   # 放す直前の指の開き具合（まだ触れている）
+FF_RELEASE = 0.5 # 放したコマの指の開き具合（もう触れていない）
 FF_Y0 = 120.0    # 放す位置（球の中心）
 FF_FLOOR = 904.0 # 床に着いたときの球の中心（球の下端 = 918 = ものさしの下端）
 FF_E = 0.45      # 床ではね返るときの反発係数
@@ -476,15 +488,21 @@ def gen_free_fall():
         f = new_frame(W, H, k)
         draw_ruler(f, 380, int(FF_FLOOR + 14), PPM)
         draw_stopwatch(f, 26, 560, 8.4 + k / FPS)
-        if k < FF_LEAD:                               # 手の中で止まっている
+        # 指は 45% ほど開いたところで球から離れる。離れたコマ（FF_LEAD）から落ち始め、
+        # 指は落ちていく球を追わずにそのまま開ききる（開いた手の下で球が止まって見えないように）。
+        if k < FF_LEAD:                               # 握りがゆるむ（指はまだ球に触れている）
             y = FF_Y0
-            open_amt = max(0.0, (k - (FF_LEAD - FF_OPEN) + 1) / FF_OPEN)
+            open_amt = max(0, k - (FF_LEAD - FF_OPEN) + 1) * FF_TOUCH / FF_OPEN
             lift = 0.0
         else:                                         # 放した後（k = FF_LEAD が t = 0）
             y, _ = _bounce_y((k - FF_LEAD) / FPS, FF_Y0, FF_FLOOR, PPM)
-            open_amt = 1.0
+            open_amt = min(1.0, FF_RELEASE + 0.12 * (k - FF_LEAD))
             u = min(1.0, (k - FF_LEAD) / 14)          # 手は少し上へ引く
             lift = 16 * (1 - (1 - u) ** 2)
+        if FF_LEAD - 1 <= k <= last:                  # 放す直前は触れ、真値の区間では一切かからない
+            touch = _hand_ball_overlap(BX, FF_Y0, open_amt, lift, y)
+            if (k < FF_LEAD) != (touch > 0):
+                raise SystemExit(f"コマ{k}: 指と球の重なり {touch}px（放す前は触れ、放した後は離れること）")
         draw_hand(f, BX, FF_Y0, open_amt, lift, lambda g: ball(g, BX, y, 14, AMBER))
         frames.append(f)
     encode("free_fall.mp4", frames, W, H)
